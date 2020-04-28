@@ -1,0 +1,4 @@
+MGCAS - Dev: ec2-18-217-106-162.us-east-2.compute.amazonaws.com
+MGCAS - Release: ec2-3-19-56-184.us-east-2.compute.amazonaws.com
+
+username for both: ubuntu

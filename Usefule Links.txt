@@ -1,0 +1,4 @@
+Test Sheet: 		https://docs.google.com/spreadsheets/d/13eVjhCKAjnsx023VdbZ6JH-FcFE0cJbiRQ29Paudg8s/edit#gid=0
+Google Sheets API: 	https://developers.google.com/sheets/api/reference/rest#rest-resource:-v4.spreadsheets.values
+Discord JS: 		https://discord.js.org/#/
+Discord Dev Portal: https://discordapp.com/developers/applications/649461468202401812/information

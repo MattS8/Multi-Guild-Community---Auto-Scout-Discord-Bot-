@@ -1,0 +1,13 @@
+{
+  "name": "scout-bot",
+  "version": "0.0.1-Alpha",
+  "description": "An auto-reporting scout bot. This will automatically write down names in the google sheets whenever someone checks in/out of scouting via the scout channel.",
+  "main": "bot.js",
+  "author": "<Contempt> Wing",
+  "dependencies": {
+    "discord.io": "https://github.com/woor/discord.io/tarball/gateway_v6",
+    "discord.js": "^11.5.1",
+    "googleapis": "^39.2.0",
+    "winston": "^3.2.1"
+  }
+}

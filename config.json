@@ -1,0 +1,296 @@
+﻿{
+  "botName": "Multi-Guild Community Scouting",
+  "botOwner": "Wing#3787",
+  "version": "0.2",
+  "admins": [
+    "239194797406027777",
+    "151201745257627649"
+  ],
+  "guilds": [
+    {
+      "tag": "Malice",
+      "name": "Malice",
+      "color": 16777215,
+      "sayings": [
+        "%s is scouting %b. I will bodyshlam you!",
+        "%s is scouting %b. AV popped I'm out, bye!",
+        "MOM GET THE CAMERA, %s is scouting %b.",
+        "Clear comms! %s is scouting %b.",
+        "%s is scouting %b. Everyone sapper.",
+        "%s is scouting %b. Toxicity means community.",
+        "%s is scouting %b. Life is like a two way street. We have to learn to ride together or we’re gonna crash.",
+        "%s is scouting %b. OH NO, OH NO!",
+        "%s is scouting %b.",
+        "%s is scouting %b and has Recklessness bound to their Esc key.",
+        "%s is scouting %b. THIS SALAD IS FUCKING FANTASTIC."
+      ]
+    },
+    {
+      "tag": "SFS",
+      "name": "Song Flower Serenade",
+      "color": 39321,
+      "sayings": [
+        "%s is scouting %b. It's story time.",
+        "%s is scouting %b. Go go go!",
+        "%s is scouting %b. Watch out for donut fingers!",
+        "%s is scouting %b. You can send your repair bill to Allthedots!",
+        "%s is scouting %b. Get out of my raid, goodbye buddy!",
+        "%s is scouting %b. I'm going to come to your house and cut your throat. Turn the fuck around and kill zombies.",
+        "%s is scouting %b. Let's do it!",
+        "Bonobo %s is scouting %b.!",
+        "%s is scouting %b. Too many words ¯\\_(ツ)_/¯",
+        "%s is scouting %b."
+      ]
+    },
+    {
+      "tag": "SG",
+      "name": "Sunnyvale Goons",
+      "color": 16148736
+    },
+    {
+      "tag": "PTL",
+      "name": "Protect The Lumber",
+      "color": 13581870
+    },
+    {
+      "tag": "Rampage",
+      "name": "Rampage",
+      "color": 16777215
+    },
+    {
+      "tag": "BRB Tornado",
+      "name": "BRB Tornado",
+      "color": 6541975
+    },
+    {
+      "tag": "Dread",
+      "name": "Dread",
+      "color": 4947153
+    },
+    {
+      "tag": "Pain Train",
+      "name": "Pain Train",
+      "color": 16776132
+    }
+  ],
+  "worldBossAlertChannelId": 649879863960010773,
+  "bosses": [
+    {
+      "name": "Azuregos",
+      "sheetName": "Boss Signup Template",
+      "signupSheetURL": "edit#gid=0",
+      "spawnText": "Please begin flying to **Azshara** immediately. DO NOT WAIT FOR A SUMMON!",
+      "channelId": 649583446011674624,
+      "respawnTimer": [],
+      "respawnCD": 259200000,
+      "type": "Blue Dragon",
+      "dead": [],
+      "killedAt": [],
+      "location": "Azshara"
+    },
+    {
+      "name": "Kazzak",
+      "sheetName": "Boss Signup Template 2",
+      "signupSheetURL": "edit#gid=824505935",
+      "spawnText": "Please begin flying here immediately. DO NOT WAIT FOR A SUMMON!",
+      "channelId": 649583446011674624,
+      "respawnTimer": [],
+      "respawnCD": 259200000,
+      "type": "Demon Lord",
+      "dead": [],
+      "killedAt": [],
+      "location": "Blasted Lands"
+    },
+    {
+      "name": "Duskwood Green Dragon",
+      "sheetName": "Boss Signup Template 3",
+      "signupSheetURL": "edit#gid=785048802",
+      "spawnText": "Please begin running from **Gromgol** immediately. DO NOT WAIT FOR A SUMMON!",
+      "channelId": 700820688851828806,
+      "respawnTimer": [],
+      "respawnCD": 259200000,
+      "type": "Green Dragon",
+      "dead": [],
+      "killedAt": [],
+      "location": "Duskwood"
+    },
+    {
+      "name": "Ashenvale Green Dragon",
+      "sheetName": "Boss Signup Template 4",
+      "signupSheetURL": "edit#gid=896070402",
+      "spawnText": "Please begin running from **Orgrimmar**. DO NOT WAIT FOR A SUMMON!",
+      "channelId": 700820495641346048,
+      "respawnTimer": [],
+      "respawnCD": 259200000,
+      "type": "Green Dragon",
+      "dead": [],
+      "killedAt": [],
+      "location": "Ashenvale"
+    },
+    {
+      "name": "Feralas Green Dragon",
+      "sheetName": "Boss Signup Template 4",
+      "signupSheetURL": "edit#gid=306454541",
+      "spawnText": "Please begin flying to **Desolace** here immediately. DO NOT WAIT FOR A SUMMON!",
+      "channelId": 684873681545330695,
+      "respawnTimer": [],
+      "respawnCD": 259200000,
+      "type": "Green Dragon",
+      "dead": [],
+      "killedAt": [],
+      "location": "Feralas"
+    },
+    {
+      "name": "Hinterlands Green Dragon",
+      "sheetName": "Boss Signup Template 4",
+      "signupSheetURL": "edit#gid=1913339638",
+      "spawnText": "Please begin flying to **Hinterlands** immediately. DO NOT WAIT FOR A SUMMON!",
+      "channelId": 700820646497878037,
+      "respawnTimer": [],
+      "respawnCD": 259200000,
+      "type": "Green Dragon",
+      "dead": [],
+      "killedAt": [],
+      "location": "Hinterlands"
+    }
+  ],
+  "commands": {
+    "normal" : {
+      "beginShift": [ "start", "begin", "scout" ],
+      "endShift": [ "stop", "leave", "end", "finish" ],
+      "bossSpotted": [ "up", "spotted", "spawned" ],
+      "showCurrentScouts": [ "here", "scouts", "who", "currentScouts", "current" ],
+      "listCommands": [ "help", "?", "commands" ],
+      "bossKilled": [ "killed", "killedAt", "dead" ],
+      "resetBossRespawn": [ "reset" ],
+      "setSummonerLocation": ["summonerAt", "setSummoner", "setSummonerLocation", "summoner", "summonerSet", "addSummoner"],
+      "removeSummonerLocation": ["removeSummoner", "removeSumm", "noSummoner", "noSumm", "summonerRemove"],
+      "signUp": [ "signUp", "schedule" ]
+    },
+    "master": {
+      "changeKeyword": ["keyword", "changeKeyword", "newKeyword", "newWord"],
+      "beginUserShift": [ "beginUserShift", "mbus" ],
+      "endAllShifts": [ "endAllShifts", "meas" ],
+      "silentBossKilled":  [ "silentBossKilled", "sbk" ],
+      "endUserShift": [ "endUserShift", "meus" ],
+      "remindRespawn": [ "remindRespawn", "sendReminder", "remind" ],
+      "resetCalendar": [ "resetCalendar", "resCal"],
+      "setLayerCount": [ "setLayerCount", "layerCount", "setNumberOfLayers", "setLayers", "setNumLayers", "layers"] 
+    },
+    "bossLoot": {
+      "reset": [ "reset", "resetLoot", "resetAll", "clear" ],
+      "loot": [ "loot", "getLootRange", "lootRange", "ranges" ],
+      "help": [ "help", "h", "?", "commands" ]
+    },
+    "parameters": {
+      "silent": "-s",
+      "verbose": "-v",
+      "whisperCharacer": "-w",
+      "master": "-m",
+      "all": "-a",
+      "force": "-f"
+    }
+  },
+  "dateFormats" : {
+    "killedDateFormat": {
+      "weekday": "long",
+      "month": "2-digit",
+      "day": "2-digit",
+      "hour": "numeric",
+      "minute": "2-digit",
+      "timeZone": "America/Los_Angeles"
+    },
+    "scoutDateFormat": {
+      "hour": "numeric",
+      "minute": "2-digit",
+      "timeZone": "America/Los_Angeles"
+    },
+    "spawnWindowFormat": {
+      "weekday": "long",
+      "day": "2-digit",
+      "hour": "numeric",
+      "minute": "2-digit",
+      "timeZone": "America/Los_Angeles"
+    },
+    "parasedDateFormat": {
+      "month": "short",
+      "year": "numeric"
+    }
+  },
+  "helpTexts": {
+    "addCharacterToBeginShift": "You can optionally add your character's name to the end of that command to automatically let people know who to whisper in the event the boss spawns during your shift."
+  },
+  "debug": {
+    "enableDebugCommands": true,
+    "disableScheduleUpdates": false,
+    "disableAttendanceUpdates": false,
+    "disableBossLogsUpdates": false,
+    "disableSignupsUpdates": false,
+    "notifications": {
+      "disableBossReset": false,
+      "disableBossKilled": false,
+      "disableBossUp": false
+    }
+  },
+  "sheets" : {
+    "attendanceSheet": {
+      "name": "Attendance (Test)",
+      "id": "13eESta2AZV2vlHbRk_s5YbDCoAPycTPjUkUTo_ltCZE",
+      "separator": "\n",
+      "headerRows": 3,
+      "startColumn": 2,
+      "columnsBeforeBosses": 3,
+      "columnsAfterBosses": 2
+    },
+    "calendarSheet": {
+      "id": "1HNxhS4tJ8VEz6DQ-swnLdGEPYV0GI-byyE_dPzs0bxM",
+      "separator": "\n",
+      "datePattern": "m/d"
+    }
+  },
+  "spicyQuotes": {  
+    "fury": [
+      "The thing is Fury is at a certain level, and if you can't handle that level then maybe you arent a good fit.If you can't be grown enough to take issues with ppl to them after the fact and let shit go at the end of the day maybe you should look to play at a different level.",
+      "Imagine wiping on Azuregos.",
+      "Toxicity is community.",
+      "Fuck you Ooze."
+    ]
+  },
+  "genericErrorMessages": [
+    "Something went wrong. Time to yell at Wing again!'",
+    "Whoops, this is embarassing. I blame my creator. Please let Wing know something went horribly wrong.",
+    "Huh... That wasn't supposed to happen. Please try again or just spam Wing until he fixes it.'"
+  ],
+  "bossLoot": {
+    "channelId": 676195196416950273
+  },
+  "bossLogs": {
+    "datePattern": "yyyy-mm-dd hh:MM TT",
+    "channelId": 664608109125435393,
+    "sheetName": "Boss Logs (Test)",
+    "commands": {
+      "getKilledTimes": {
+        "displayCommands": [ "spawnTimes", "killedTimes", "spawnDates", "killedDates", "getSpawnTimes", "getKilledTimes" ],
+        "actualCommands": [ "spawntimes", "killedtimes", "spawndates", "killeddates", "getspawntimes", "getkilledtimes" ]
+      },
+      "timeBetweenKills": {
+        "displayCommands": [ "timeBetweenKills", "getTimeBetweenKills", "deltaTimes" ],
+        "actualCommands": [ "timebetweenkills", "gettimebetweenkills", "deltatimes" ]
+      },
+      "listCommands": [ "help", "?", "commands" ],
+      "parameters": {
+        "bossLogs": "-bossLogs"
+      }
+    }
+  },
+  "serverTimezone": "-0700",
+  "respawnGracePeriod": 1800000,
+  "utc_offset": 0,
+  "scoutListColumn": "J",
+  "identifier": "!",
+  "hideCommandMessage": true,
+  "checkInInterval": 3600000,
+  "alertColor": 16520963,
+  "sheetURL": "https://docs.google.com/spreadsheets/d/13eESta2AZV2vlHbRk_s5YbDCoAPycTPjUkUTo_ltCZE/edit?usp=sharing",
+  "signupSheetURL": "https://docs.google.com/spreadsheets/d/1HNxhS4tJ8VEz6DQ-swnLdGEPYV0GI-byyE_dPzs0bxM/"
+}
