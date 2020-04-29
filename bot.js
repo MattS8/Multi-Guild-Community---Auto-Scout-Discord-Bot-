@@ -5,7 +5,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.2.5'
+const versionNumber = 'v1.2.6'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -21,12 +21,12 @@ var secretWord = "dragondudes"
 
 // Layering (eww)
 var numberOfLayers = 2
-var LayerIds = []
 
 // Boss Initialization
 Bosses.forEach(boss => { 
     boss.nextRespawnDate = []
     boss.up = []
+    boss.layerId = []
 })
 
 var LastAlertMessage = undefined
@@ -831,7 +831,7 @@ function showBossStatus(title, boss, color) {
     //    3. Scouts - List of scout(s) and the time(s) they started scouting
     for (i = 0; i<numberOfLayers; i++) {
         //logger.info("    (showBossStatus) - Length of scout list on layer " + (i+1) + ": " + scoutListAllLayers[i].size)
-        embededMessage += "\n\n__Scouts on **Layer " + (i+1) + "**__" + (LayerIds[i] != undefined ? (" [zone **" + LayerIds[i] + "**] :") : ":")
+        embededMessage += "\n\n__Scouts on **Layer " + (i+1) + "**__" + (boss.layerId[i] != undefined ? (" [zone **" + boss.layerId[i] + "**] :") : ":")
         if (boss.dead[i] != undefined) {
             embededMessage += "\n\t\t***---- DEAD ---- ***\n(Killed on: *" + boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "*)"
             if (boss.type == "Green Dragon" && GreenDragonsKilled[i] != 4) {
@@ -2443,8 +2443,10 @@ function changeKeyword(message, newKeyword) {
  * 
  * @param {Message} message
  * @param {Number} amount 
+ * @param {Boss} boss
+ * @param {Number[]} layerIds
  */
-function setLayerCount(message, amount) {
+function setLayerCount(message, amount, boss, layerIds) {
     logger.info("command: setLayerCount (master command)")
 
     if (Config.hideCommandMessage)
@@ -2460,6 +2462,7 @@ function setLayerCount(message, amount) {
             if (scoutList[i] == undefined)
                 scoutList[i] = new Map()
         })
+        boss.layerId[i] = layerIds[i]
     }
 
     let embededMessage = "Number of layers predicted: " + amount
@@ -2792,10 +2795,11 @@ bot.on('message', async message => {
                 if (Object.is(NaN, amount)) {
                     return notifyDiscordBotError(message, "Unknown amount entered. Please try again by adding the number of layers to the end of the command.")
                 }
+                let layerIds = []
                 for (i=0; i<amount; i++)
-                    LayerIds[i] = args[i+1]
+                    layerIds[i] = args[i+1] == "_" ? undefined : args[i+1]
                 
-                return setLayerCount(message, amount)
+                return setLayerCount(message, amount, boss, layerIds)
             }
 
             // Boss Respawn Reminder
@@ -3004,8 +3008,14 @@ function getLayerFromParams(args, message) {
     }
 
     if (layer > numberOfLayers) {
+        let boss = Bosses.find(b => b.channelId == message.channel.id)
+        if (boss == undefined) {
+            logger.error("(getLayerFromParams) - Couldn't find boss for channel id: " + message.channel.i)
+            return layer
+        }
+            
         logger.info("    (getLayerFromParams) - user enetered a layer that was higher than the predicted number of layers. Readjusting layer count from " + numberOfLayers + " to " + layer)
-        setLayerCount(message, layer)
+        setLayerCount(message, layer, boss, boss.layerId)
     }
 
     return layer
