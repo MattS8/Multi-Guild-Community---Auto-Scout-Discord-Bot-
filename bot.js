@@ -5,7 +5,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.2.7'
+const versionNumber = 'v1.2.8'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -1781,9 +1781,10 @@ function beginShift(message, startDate, scoutList, layer) {
         displayName: message.member.displayName,
         startTime: startDate,
         nickname: undefined,
-        checkInID: setInterval(checkInOnScout, Config.checkInInterval, message.author.id),
+        checkInID: 0,
         calendarId: undefined
     }
+    //setInterval(checkInOnScout, Config.checkInInterval, message.author.id)
 
     logger.info('    (beginShift) - ' + newScout.displayName + ' (' + newScout.userId + ') started scouting ' + boss.name + ' at ' + newScout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
     scoutList[layer-1].set(newScout.userId, newScout)
@@ -2543,8 +2544,9 @@ function beginUserShift(message, args, layer) {
             displayName: scoutDisplayName,
             startTime: startDate,
             nickname: undefined,
-            checkInID: setInterval(checkInOnScout, Config.checkInInterval, userId)
+            checkInID: 0
         }
+        //setInterval(checkInOnScout, Config.checkInInterval, userId)
     
         logger.info('    (beginUserShift) - ' + newScout.displayName + ' (' + newScout.userId + ') started scouting '
             + boss.name + ' at ' + newScout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
