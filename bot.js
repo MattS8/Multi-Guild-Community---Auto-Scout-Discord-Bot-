@@ -880,6 +880,9 @@ function showBossStatus(title, boss, color) {
  */
 function showCurrentScouts(message, boss, showAll) {
     logger.info("Command: showCurrentScouts")
+
+    message.delete().catch(e => {})
+
     if (showAll) {
         logger.info("    (showCurrentScouts) - updating boss status for all bosses")
         Bosses.forEach(b => {
