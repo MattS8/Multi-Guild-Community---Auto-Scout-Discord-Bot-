@@ -5,7 +5,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.2.6'
+const versionNumber = 'v1.2.7'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -875,53 +875,20 @@ function showBossStatus(title, boss, color) {
  * with the channel.
  * 
  * @param {Message} message 
+ * @param {Boss} boss
+ * @param {Boolean} showAll
  */
-function showCurrentScouts(message) {
-    const boss = Bosses.find(b => b.channelId == message.channel.id)
-    var title = 'Current players scouting ' + boss.name
-    var scoutList = getScoutListFromChannelId(message.channel.id)
-    var otherScouts = ''
-
-    if (scoutList.size > 0) {
-        var moreThanOne = scoutList.size > 1
-        var otherScoutsTitle = 'There ' + (moreThanOne ? 'are ' : 'is ') + scoutList.size + (moreThanOne ? ' players' : ' player') + ' currently scoutting.'
-        var otherScouts = ''
-        for (const scoutKey of scoutList.keys()) {
-            var scout = scoutList.get(scoutKey)
-            otherScouts += '\n\t\t- ' + scout.displayName + ' (since ' + scout.startTime.toLocaleString(undefined, Config.scoutDateFormat) + ')'
-        }
+function showCurrentScouts(message, boss, showAll) {
+    logger.info("Command: showCurrentScouts")
+    if (showAll) {
+        logger.info("    (showCurrentScouts) - updating boss status for all bosses")
+        Bosses.forEach(b => {
+            showBossStatus("Current Scout for " + b.name + ":", b, getGuildFromDisplayName(message.member.displayName).color)
+        })
     } else {
-        var otherScoutsTitle = 'No players are scouting!'
-        var otherScouts = '\n----------------------------------------'
+        logger.info("    (showCurrentScouts) - updating boss status for " + boss.name)
+        showBossStatus("Current Scout for " + boss.name + ":", boss, getGuildFromDisplayName(message.member.displayName).color)
     }
-
-    if (Config.hideCommandMessage)
-        message.delete().catch(e => { })
-    message.channel.send({
-        embed: {
-            title: title,
-            color: getGuildFromDisplayName(message.member.displayName).color,
-            fields: [{
-                name: otherScoutsTitle,
-                value: otherScouts,
-                inline: true
-            }],
-            timestamp: message.createdAt
-        },
-    })
-}
-
-function checkInOnScout(userId) {
-    bot.fetchUser(userId).then(user => {
-        if (user == undefined) {
-            logger.error('(checkInOnScout) - no user found for userId: ' + userId)
-            return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-        }
-        
-        //TODO: Check in on user
-        //logger.info("CheckInOnUser: TODO")
-        //user.send()
-    })
 }
 
 
@@ -2743,7 +2710,7 @@ bot.on('message', async message => {
         if (Config.commands.normal.bossSpotted.map(strToLower).includes(command)) return bossSpotted(message, args, command, boss, layer)
 
         // Show Current Scouts
-        if (Config.commands.normal.showCurrentScouts.map(strToLower).includes(command)) return showCurrentScouts(message)
+        if (Config.commands.normal.showCurrentScouts.map(strToLower).includes(command)) return showCurrentScouts(message, boss, getArg(args, Config.commands.parameters.all) != undefined)
 
         // Boss Killed
         if (Config.commands.normal.bossKilled.map(strToLower).includes(command)) {
