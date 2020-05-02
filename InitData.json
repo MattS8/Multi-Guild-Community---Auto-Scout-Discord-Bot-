@@ -1,0 +1,72 @@
+{
+	"numberOfLayers": 2,
+	"keyword": "dragondudes",
+	"bosses": [
+		{
+			"name": "Azuregos",
+			"layerInfo": [
+				{
+					"killedDate": "04/29 2:59 AM"
+				},
+				{
+					"killedDate": "04/29 10:18 AM"
+				}
+			]
+		},
+		{
+			"name": "Kazzak",
+			"layerInfo": [
+				{
+					"killedDate": "04/29 2:00 PM"
+				},
+				{
+					"killedDate": "04/29 10:37 AM"
+				}
+			]
+		},
+		{
+			"name": "Duskwood Green Dragon",
+			"layerInfo": [
+				{
+					"killedDate": "04/29, 8:26 AM"
+				},
+				{
+					"killedDate": "04/29 1:34 PM"
+				}
+			]
+		},
+		{
+			"name": "Ashenvale Green Dragon",
+			"layerInfo": [
+				{
+					"killedDate": "04/29 8:00 AM"
+				},
+				{
+					"killedDate": "04/29 1:12 PM"
+				}
+			]
+		},
+		{
+			"name": "Feralas Green Dragon",
+			"layerInfo": [
+				{
+					"killedDate": "04/29 8:36 AM"
+				},
+				{
+					"killedDate": "04/29 1:49 PM"
+				}
+			]
+		},
+		{
+			"name": "Hinterlands Green Dragon",
+			"layerInfo": [
+				{
+					"killedDate": "04/29 8:08 AM"
+				},
+				{
+					"killedDate": "04/29 1:43 PM"
+				}
+			]
+		}
+	]
+}

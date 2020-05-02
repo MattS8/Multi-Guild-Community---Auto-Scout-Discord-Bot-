@@ -159,13 +159,14 @@
       "beginShift": [ "start", "begin", "scout" ],
       "endShift": [ "stop", "leave", "end", "finish" ],
       "bossSpotted": [ "up", "spotted", "spawned" ],
-      "showCurrentScouts": [ "here", "scouts", "who", "currentScouts", "current" ],
+      "showCurrentScouts": [ "update", "here", "scouts", "who", "currentScouts", "current" ],
       "listCommands": [ "help", "?", "commands" ],
       "bossKilled": [ "killed", "killedAt", "dead" ],
       "resetBossRespawn": [ "reset" ],
       "setSummonerLocation": ["summonerAt", "setSummoner", "setSummonerLocation", "summoner", "summonerSet", "addSummoner"],
       "removeSummonerLocation": ["removeSummoner", "removeSumm", "noSummoner", "noSumm", "summonerRemove"],
-      "signUp": [ "signUp", "schedule" ]
+      "signUp": [ "signUp", "schedule" ],
+      "setLayerId": ["setId", "setLayerId", "id"] 
     },
     "master": {
       "changeKeyword": ["keyword", "changeKeyword", "newKeyword", "newWord"],

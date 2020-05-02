@@ -1,11 +1,12 @@
 const Discord = require('discord.js')
 const logger = require('winston')
 var myAuth = require('./auth.json')
+const InitData = require('./InitData.json')
 const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.2.8'
+const versionNumber = 'v1.2.9'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -45,6 +46,38 @@ var GreenDragonsKilled = []
 for (i=0; i< numberOfLayers; i++) {
     GreenDragonsKilled[i] = 0
 }
+
+// Initialization
+function initializeFromData() {
+    // Set Keyword
+    if (InitData.keyword != undefined) 
+        secretWord = InitData.keyword
+
+    // Set Layers
+    if (InitData.numberOfLayers != undefined)
+        setLayerCount(undefined, InitData.numberOfLayers, undefined, [], true)
+
+    // Init Bosses w/Killed Dates
+    InitData.bosses.forEach(initBoss => {
+        let boss = Bosses.find(b => b.name == initBoss.name)
+        logger.info("boss " + boss.name)
+        initBoss.layerInfo.forEach((info, index) => {
+            if (info.layerId != undefined)
+                boss.layerId[index] = info.layerId
+
+            if (info.killedDate != undefined)
+                bossKilled(undefined, info.killedDate.split(' '), boss, true, false, false, getScoutListFromChannelId(boss.channelId)[index], index+1)
+        })
+
+        bot.channels.find(c => c.id == boss.channelId).messages.forEach((msg, index) => {
+            logger.info("Message " + index + ": " + msg)
+        })
+        showBossStatus("Status of " + boss.name + ":", boss, Config.alertColor)
+    })
+
+    showAllBossStatus("Satus of All World Bosses:")
+}
+
 
 // --------------------------------------------------------------
 // Google Sheet Auth Stuff
@@ -517,65 +550,6 @@ function notifyBossRespawnSoon(bossChannelId) {
 }
 
 /**
- * This function is used whenever a boss is reported dead.
- * 
- * @param {*} message 
- * @param {Boss} boss The killed boss
- * @param {Date} nextRespawn The date when the boss will be spawnable again
- * @param {Boolean} sendMessageInWorldBoss Whether to send an arlert in World Boss channel
- * @param {Number} layer The layer the boss was killed on
- */
-function notifyBossKilled(message, boss, nextRespawn, sendMessageInWorldBoss, layer) {
-    logger.info("    (notifyBossKilled) - dead on all layers: " + bossKilledOnAllLayers(boss))
-    let respawnString = nextRespawn == undefined ? "Waiting on other green dragons to be killed." : ("Respawns: " + nextRespawn.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + " server")
-
-    // If boss is dead on all known layers, we can be pretty sure we don't need to prioritize scouting
-    if (!bossKilledOnAllLayers(boss))
-        respawnString += "\n\n:exclamation: **" + (boss.type == "Green Dragon" ? ("Green Dragons are") : (boss.name + " is")) +  " still alive on other layers! Scouts are still needed in " + boss.location + ".** :exclamation:"
-
-    const killedAtString = boss.killedAt[layer-1].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
-    //const respawnTime = new Date(getNextRespawnTime(boss.killedAt, boss).getTime() + (3600000 * Config.utc_offset * -1)).toLocaleString("en-US", Config.dateFormats.killedDateFormat)
-    //logger.info("    (notifyBossKilled) - respawnTime: " + respawnString)
-    logger.info("    (notifyBossKilled) - killedAt: " + killedAtString)
-
-    if (Config.hideCommandMessage)
-        message.delete().catch(e => { })
-
-    if (Config.debug.notifications.disableBossKilled) return logger.info("    (notifyBossKilled) - DEBUG: suppressing notification")
-
-
-    let titleStr = (boss.type == "Green Dragon" ? ("A Green Dragon was killed in " + boss.location) : (boss.name + " was killed")) + (numberOfLayers > 1 ? (" on layer " + layer + "!") : "!")
-    message.channel.send({
-        embed: {
-            title: titleStr,
-            color: getGuildFromDisplayName(message.member.displayName).color,
-            fields: [{
-                name: 'Killed: ' + killedAtString + ' server',
-                value: respawnString,
-                inline: true
-            }],
-            timestamp: new Date()
-        },
-    })
-    if (sendMessageInWorldBoss) {
-        bot.channels.find(val => val.id == Config.worldBossAlertChannelId).send({
-            embed: {
-                title: titleStr,
-                color: getGuildFromDisplayName(message.member.displayName).color,
-                fields: [{
-                    name: 'Killed: ' + killedAtString + ' server',
-                    value: respawnString,
-                    inline: true
-                }],
-                timestamp: new Date()
-            },
-        })
-    }
-    else
-        logger.info("    (notifyBossKilled) - skipping WorldBossAlert channel...")
-}
-
-/**
  * This function is used whenever a scout signals that a boss has spawned.
  * 
  * @param {message} message 
@@ -627,7 +601,6 @@ function notifyBossUp(message, characterName) {
         logger.error('(notifyBossUp) - couldn\'t find world boss channel...');
 }
 
-
 // -------------------------- Scout Functions
 
 /**
@@ -667,105 +640,6 @@ function remindUserOfScoutTime(user, boss)
         + "You can view the sign up sheet here: " + Config.signupSheetURL + boss.signupSheetURL
         
     user.send(message)
-}
-
-/**
- * This function is used to send a channel message
- * notifying that the user has stopped scouting.
- * 
- * @param {Message} message 
- * @param {String} displayName 
- * @param {Boss} bossName 
- * @param {Map<String, Scout} scoutList 
- */
-function notifyScoutLeaving(message, scout, bossName, scoutList)
-{
-    const title = scout.displayName + ' is leaving ' + bossName + '.'
-
-    let otherScoutsTitle = ''
-    let otherScouts = ''
-    if (scoutList.size > 0) {
-        otherScoutsTitle = scoutList.size + ' other ' + (scoutList.size > 1 ? 'players' : 'player') + ' scouting:'
-        for (const scoutKey of scoutList.keys()) {
-            let s = scoutList.get(scoutKey)
-            otherScouts += '\n\t\t- ' + s.displayName + ' (since ' + s.startTime.toLocaleString("en-US", Config.dateFormats.scoutDateFormat) + ')'
-        }
-    } else {
-        otherScoutsTitle = 'WARNING: NO REPLACEMENT IS ASSIGNED!'
-        otherScouts = ':exclamation::exclamation::exclamation: ' + bossName.toUpperCase() + ' IS  UNATTENDED :exclamation::exclamation::exclamation: '
-    }
-
-    message.channel.send({
-        embed: {
-            title: title,
-            color: getGuildFromDisplayName(scout.displayName).color,
-            fields: [{
-                name: otherScoutsTitle,
-                value: otherScouts,
-                inline: true
-            }],
-            timestamp: message.createdAt
-        },
-    })
-}
-
-/**
- * This function is used whenever a user begins scouting.
- * 
- * @param {message} message 
- * @param {String} displayName 
- * @param {Boss} boss 
- * @param {Number} layer
- */
-function notifyNewScout(message, displayName, boss, layer) {
-    if (Config.hideCommandMessage)
-        message.delete().catch(e => { })
-
-    const scoutListAllLayers = getScoutListFromChannelId(message.channel.id)
-    const scoutGuild = getGuildFromDisplayName(displayName)
-    if (scoutGuild == undefined) return logger.error("(notifyNewScout) - unable to find guild for " + displayName)
-
-    let title = scoutGuild.sayings != undefined
-        ? scoutGuild.sayings[getRandomInt(0, scoutGuild.sayings.length - 1)].replace("%s", displayName).replace("%b", boss.name + (numberOfLayers > 1 ? (" on layer " + layer + ".") :  "."))
-        : displayName + ' started scouting ' + boss.name + (numberOfLayers > 1 ? (" on layer " + layer + ".") : ".")
-
-    let otherScoutsTitle = ''
-    let otherScouts = ''
-
-    if (numberOfLayers > 1) {
-        otherScoutsTitle = 
-        showBossStatus(title, boss, scoutGuild.color)
-    } else {
-        const scoutList = scoutListAllLayers[layer-1]
-        if (scoutList.size > 0) {
-            let moreThanOne = scoutList.size > 1
-            otherScoutsTitle = scoutList.size + ' other ' + (moreThanOne ? 'players' : 'player') + ' scouting:'
-            otherScouts = ''
-            for (const scoutKey of scoutList.keys()) {
-                let scout = scoutList.get(scoutKey)
-                otherScouts += '\n\t\t- ' + scout.displayName + ' (since ' + scout.startTime.toLocaleString(undefined, Config.dateFormats.scoutDateFormat) + ')'
-            }
-        }
-        else {
-            otherScoutsTitle = 'No other players are helping scout.'
-            otherScouts = '\n----------------------------------------'
-        }
-    
-        otherScouts += "\n\nView the sign up sheet at: " + Config.signupSheetURL + boss.signupSheetURL
-
-        message.channel.send({
-            embed: {
-                title: title,
-                color: scoutGuild.color,
-                fields: [{
-                    name: otherScoutsTitle,
-                    value: otherScouts,
-                    inline: true
-                }],
-                timestamp: message.createdAt
-            },
-        })
-    }
 }
 
 function showAllBossStatus(title) {
@@ -831,7 +705,7 @@ function showBossStatus(title, boss, color) {
     //    3. Scouts - List of scout(s) and the time(s) they started scouting
     for (i = 0; i<numberOfLayers; i++) {
         //logger.info("    (showBossStatus) - Length of scout list on layer " + (i+1) + ": " + scoutListAllLayers[i].size)
-        embededMessage += "\n\n__Scouts on **Layer " + (i+1) + "**__" + (boss.layerId[i] != undefined ? (" [zone **" + boss.layerId[i] + "**] :") : ":")
+        embededMessage += "\n\n__Scouts " + (numberOfLayers > 1 ? (" on **Layer " + (i+1) + "**") : "" )  + "__" + (boss.layerId[i] != undefined ? (" [zone **" + boss.layerId[i] + "**] :") : ":")
         if (boss.dead[i] != undefined) {
             embededMessage += "\n\t\t***---- DEAD ---- ***\n(Killed on: *" + boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "*)"
             if (boss.type == "Green Dragon" && GreenDragonsKilled[i] != 4) {
@@ -908,12 +782,13 @@ function showCurrentScouts(message, boss, showAll) {
 function showScoutingCommands(message, showAllCommands, showToChannel) {
     logger.info('Command: showScoutingCommands')
 
-    const title = '---- Commands for ' + Config.botName + ' ----'
+    
     const boss = Bosses.find(b => b.channelId == message.channel.id)
     if (boss == undefined) {
         loggger.error('(showScoutingCommands) - unknown boss with channelId: ' + message.channel.id)
         return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
     }
+    const title = '---- ' + boss.name + ' Commands for ' + Config.botName + ' ----'
 
     logger.info("    (showScoutingCommands) - boss type: " + boss.type)
 
@@ -938,6 +813,12 @@ function showScoutingCommands(message, showAllCommands, showToChannel) {
         + "```Registers a summoner at " + boss.location + ".```"
         + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.removeScoutFromList) : Config.identifier + Config.commands.normal.removeSummonerLocation[0]) + "**"
         + "```Removes " + boss.location + " from the list of places you have a summoner at.```"
+        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.showCurrentScouts) : Config.identifier + Config.commands.normal.showCurrentScouts[0]) + "**"
+        + "```Manually updates the satus message for " + boss.name + ".\n\nYou can optionally trigger this command for all bosses by adding " + Config.commands.parameters.all 
+        + " to the end of the command.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.showCurrentScouts[0] + " " + Config.commands.parameters.all + "')```"
+        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.setLayerId) : Config.identifier + Config.commands.normal.setLayerId[0]) + " layer=<layer number> <id>**"
+        + "```Set the layer id for " + boss.location + " on the given layer.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.setLayerId[0] 
+        + " layer=2 88')```"
         + '\n**' + (showAllCommands ? listAllVariations(Config.commands.normal.listCommands) : Config.identifier + Config.commands.normal.listCommands[0]) + '**'
         + '```Show a list of valid commands for the bot.```'
 
@@ -1966,24 +1847,18 @@ function resetBossRespawn(boss, suppressNotification, layer) {
   * @param {*} message 
   * @param {String[]} args 
   * @param {Boolean} doSilently 
+  * @param {Boss} boss
   * @param {Boolean} updateBossKillsLog 
   * @param {Boolean} forceKillUpdate 
   * @param {Map} scoutingList 
   * @param {Number} layer 
   */
-function bossKilled(message, args, doSilently, updateBossKillsLog, forceKillUpdate, scoutingList, layer) {
-    if (Config.hideCommandMessage)
+function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKillUpdate, scoutingList, layer) {
+    if (Config.hideCommandMessage && message != undefined)
         message.delete().catch(e => { })
 
     // Determining layer
     let layerIndex = layer-1
-
-    // get boss
-    const boss = Bosses.find(b => b.channelId == message.channel.id)
-    if (boss == undefined) {
-        logger.error("(bossKilled) - Unabled to find boss for channel " + message.channel.id)
-        return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-    }
 
     if (boss.dead[layerIndex] != undefined && !forceKillUpdate) {
         notifyDiscordBotError(message, "\n**" + boss.name + "** was already registered as killed on *layer " + layer + "* at **" + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat) 
@@ -2037,20 +1912,22 @@ function bossKilled(message, args, doSilently, updateBossKillsLog, forceKillUpda
 
             Bosses.forEach(b => {
                 if (b.type == "Green Dragon") {
-                    b.respawnTimer[layerIndex] = setTimeout(resetBossRespawn, respawnTimerMilis, b, doSilently, layerIndex+1)
+                    b.respawnTimer[layerIndex] = setTimeout(resetBossRespawn, respawnTimerMilis, b, false, layerIndex+1)
                     b.nextRespawnDate[layerIndex] = nextRespawn
 
-                    logger.info("    (bossKilled) - Updating status for " + boss.name + " on layer " + layerIndex)
-                    showBossStatus(":exclamation: All Green Dragons are dead" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")) + " :exclamation:", 
-                        b, 
-                        getGuildFromDisplayName(message.member.displayName).color)
+                    logger.info("    (bossKilled) - Updating status for " + b.name + " on layer " + layerIndex)
+                    if (!doSilently)
+                        showBossStatus(":exclamation: All Green Dragons are dead" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")) + " :exclamation:", 
+                            b, 
+                            getGuildFromDisplayName(message.member.displayName).color)
                 }
             })
 
-            showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
+            if (!doSilently)
+                showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
         } 
         // Simply notify that a dragon was killed if not told to do silently
-        else {
+        else if (!doSilently) {
             showBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")),
                 boss,
                 getGuildFromDisplayName(message.member.displayName).color
@@ -2069,11 +1946,14 @@ function bossKilled(message, args, doSilently, updateBossKillsLog, forceKillUpda
         boss.respawnTimer[layerIndex] = setTimeout(resetBossRespawn, respawnTimerMilis, boss, doSilently, layerIndex+1)
         boss.nextRespawnDate[layerIndex] = nextRespawn
 
-        showBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")), 
-            boss, 
-            getGuildFromDisplayName(message.member.displayName).color)
+        if (!doSilently) {
+            showBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")), 
+                boss, 
+                getGuildFromDisplayName(message.member.displayName).color)
 
-        showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
+            showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
+        }
+
     }
 
     if (!Config.debug.disableBossLogsUpdates && updateBossKillsLog)
@@ -2088,6 +1968,42 @@ function bossKilled(message, args, doSilently, updateBossKillsLog, forceKillUpda
         blackOutCalendar(boss.sheetName, boss.killedAt[soonestLayer-1], boss.nextRespawnDate[soonestLayer-1])
     } else
         logger.info("    (bossKilled) - Skipping calendar updates...")
+
+    // Write to initData
+    saveInitData()
+}
+
+function saveInitData() {
+    fs.writeFile('./InitData.json', JSON.stringify(getInitDataObject(), null, '\t'), (err) => {
+        if (err) return logger.error("(bossKilled) - An error has occured.\n" + err.stack)
+    })
+}
+
+function getInitDataObject() {
+    let initDataObject = {
+        numberOfLayers: numberOfLayers,
+        keyword: secretWord,
+        bosses: []
+    }
+
+    Bosses.forEach((boss, index) => {
+        let bossData = {
+            name: boss.name,
+            layerInfo: []
+        }
+
+        for (i=0; i<numberOfLayers; i++) {
+            bossData.layerInfo[i] = {}
+            if (boss.killedAt[i] != undefined)
+                bossData.layerInfo[i].killedDate = boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+            if (boss.layerId[i] != undefined)
+                bossData.layerInfo[i].layerId = boss.layerId[i]
+        }
+
+        initDataObject.bosses[index] = bossData
+    })
+
+    return initDataObject
 }
 
 function getLayerOffCooldownSoonest(boss) {
@@ -2275,6 +2191,34 @@ function removeSummonerLocation(message) {
 }
 
 /**
+ *  Command: !setLayerId layer=<layer> <layerId>
+ *  
+ * @param {*} message 
+ * @param {*} boss 
+ * @param {Number} layer 
+ * @param {Number} layerId 
+ */
+function setLayerId(message, boss, layer, layerId) {
+    logger.info("Command: setLayerId()")
+
+    logger.info("    (setLayerId) - Setting layer " + layer + " for " + boss.location + " to " + layerId)
+
+    if (layer < 1 || layer > numberOfLayers) {
+        return notifyDiscordBotError(message, "Invalid layer specified. The number of layers is currently set to " + numberOfLayers + ".")
+    }
+
+    if (Object.is(NaN, layerId)) {
+        return notifyDiscordBotError(message, "Invalid layer ID was given. Please try again. (You entered: **" + layerId + "**)")
+    }
+
+    boss.layerId[layer-1] = layerId
+
+    showBossStatus(boss.location + "'s layer ID was set to " + layerId + " for layer " + layer + ".", boss, getGuildFromDisplayName(message.member.displayName).color)
+
+    saveInitData()
+}
+
+/**
  * Command: !summonerAt
  * 
  * Adds the location of the boss associated with the given 
@@ -2406,6 +2350,8 @@ function changeKeyword(message, newKeyword) {
             timestamp: new Date()
         },
     })
+
+    saveInitData()
 }
 
 /**
@@ -2416,11 +2362,12 @@ function changeKeyword(message, newKeyword) {
  * @param {Number} amount 
  * @param {Boss} boss
  * @param {Number[]} layerIds
+ * @param {Boolean} doSilently
  */
-function setLayerCount(message, amount, boss, layerIds) {
+function setLayerCount(message, amount, boss, layerIds, doSilently) {
     logger.info("command: setLayerCount (master command)")
 
-    if (Config.hideCommandMessage)
+    if (Config.hideCommandMessage && message != undefined)
         message.delete().catch(e => { })
 
     numberOfLayers = amount < 1 ? 1 : amount
@@ -2433,23 +2380,28 @@ function setLayerCount(message, amount, boss, layerIds) {
             if (scoutList[i] == undefined)
                 scoutList[i] = new Map()
         })
-        boss.layerId[i] = layerIds[i]
+
+        if (boss != undefined)
+            boss.layerId[i] = layerIds[i]
     }
 
     let embededMessage = "Number of layers predicted: " + amount
 
-    message.channel.send({
-        embed: {
-            title: 'Number of layers has changed!',
-            color: getGuildFromDisplayName(message.member.displayName).color,
-            fields: [{
-                name: 'The number of layers has been changed. The bot will recalculate the number of instances each boss can appear based on the new number.',
-                value: embededMessage,
-                inline: true
-            }],
-            timestamp: new Date()
-        },
-    })
+    if (!doSilently)
+        message.channel.send({
+            embed: {
+                title: 'Number of layers has changed!',
+                color: getGuildFromDisplayName(message.member.displayName).color,
+                fields: [{
+                    name: 'The number of layers has been changed. The bot will recalculate the number of instances each boss can appear based on the new number.',
+                    value: embededMessage,
+                    inline: true
+                }],
+                timestamp: new Date()
+            },
+        })
+
+    saveInitData()
 }
 
 /**
@@ -2598,7 +2550,12 @@ bot.on('shardError',  error => {
 })
 
 bot.on('error', error => {
-    logger.error("An error has occured: " + error)
+    logger.error("An error has occured: \n" + error.stack)
+    console.log(error)
+
+    // bot.fetchUser(scout.userId).then(user => {
+
+    //  })
 })
 
 bot.on('ready', () => {
@@ -2607,6 +2564,8 @@ bot.on('ready', () => {
     logger.info("------------------------------------------------------")
     logger.info(Config.botName + ' ' + versionNumber + (Config.debug.enableDebugCommands ? " (Debug Commands Enabled)" : " (Debug Commands Disabled)"))
     logger.info("------------------------------------------------------")
+
+    initializeFromData()
 })
 
 bot.on('message', async message => {
@@ -2729,7 +2688,7 @@ bot.on('message', async message => {
                 forceKillUpdate = true
             }
 
-            return bossKilled(message, args, getArg(args, Config.commands.parameters.silent) != undefined, true, forceKillUpdate, scoutList[layer-1], layer)
+            return bossKilled(message, args, boss, getArg(args, Config.commands.parameters.silent) != undefined, true, forceKillUpdate, scoutList[layer-1], layer)
         }
 
         // Reset Boss Timers
@@ -2758,6 +2717,9 @@ bot.on('message', async message => {
                 return showScoutingCommands(message, showVerbose, showToChannel)
         }
 
+        // Set Layer Id
+        if (Config.commands.normal.setLayerId.map(strToLower).includes(command)) return setLayerId(message, boss, layer, parseInt(args[0]))
+
         // MASTER COMMANDS
 
         if (Config.admins.includes(message.member.id)) {
@@ -2771,7 +2733,7 @@ bot.on('message', async message => {
                 for (i=0; i<amount; i++)
                     layerIds[i] = args[i+1] == "_" ? undefined : args[i+1]
                 
-                return setLayerCount(message, amount, boss, layerIds)
+                return setLayerCount(message, amount, boss, layerIds, getArg(args, Config.commands.parameters.silent) != undefined)
             }
 
             // Boss Respawn Reminder
@@ -2848,7 +2810,7 @@ bot.on('message', async message => {
                     forceKillUpdate = true
                 }
 
-                bossKilled(message, args, true, updateBossKillsLog, forceKillUpdate, scoutList[layer-1], layer)
+                bossKilled(message, args, boss, true, updateBossKillsLog, forceKillUpdate, scoutList[layer-1], layer)
             }
 
         }
@@ -2987,7 +2949,7 @@ function getLayerFromParams(args, message) {
         }
             
         logger.info("    (getLayerFromParams) - user enetered a layer that was higher than the predicted number of layers. Readjusting layer count from " + numberOfLayers + " to " + layer)
-        setLayerCount(message, layer, boss, boss.layerId)
+        setLayerCount(message, layer, boss, boss.layerId, getArg(args, Config.commands.parameters.silent))
     }
 
     return layer
