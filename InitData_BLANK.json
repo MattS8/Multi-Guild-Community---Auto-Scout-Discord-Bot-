@@ -1,0 +1,48 @@
+{
+	"numberOfLayers": 2,
+	"keyword": "dragondudes",
+	"bosses": [
+		{
+			"name": "Azuregos",
+			"layerInfo": [
+				{},
+				{}
+			]
+		},
+		{
+			"name": "Kazzak",
+			"layerInfo": [
+				{},
+				{}
+			]
+		},
+		{
+			"name": "Duskwood Green Dragon",
+			"layerInfo": [
+				{},
+				{}
+			]
+		},
+		{
+			"name": "Ashenvale Green Dragon",
+			"layerInfo": [
+				{},
+				{}
+			]
+		},
+		{
+			"name": "Feralas Green Dragon",
+			"layerInfo": [
+				{},
+				{}
+			]
+		},
+		{
+			"name": "Hinterlands Green Dragon",
+			"layerInfo": [
+				{},
+				{}
+			]
+		}
+	]
+}

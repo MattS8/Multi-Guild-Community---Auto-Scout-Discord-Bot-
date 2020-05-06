@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.2.9'
+const versionNumber = 'v1.3.0'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -1824,8 +1824,8 @@ function resetBossRespawn(boss, suppressNotification, layer) {
     let respawnTitle = boss.name + " can spawn " + (numberOfLayers > 1 ? ("on layer " + layer + "!") : ("!"))
 
     if (!Config.debug.notifications.disableBossReset && !suppressNotification && shouldNotify){
-        bossChannel.send('@here').then(newMessage => { showBossStatus(respawnTitle, boss, Config.alertColor) })
-        worldBossAlertChannel.send('@here').then(newMessage => { showAllBossStatus(respawnTitle) })
+        showBossStatus(respawnTitle, boss, Config.alertColor)
+        showAllBossStatus(respawnTitle)
     }
     
     else {
@@ -1861,9 +1861,10 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     let layerIndex = layer-1
 
     if (boss.dead[layerIndex] != undefined && !forceKillUpdate) {
-        notifyDiscordBotError(message, "\n**" + boss.name + "** was already registered as killed on *layer " + layer + "* at **" + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat) 
-            + "**. If you believe this is in error, please try the command again by adding `" + Config.commands.parameters.force + "` to the *beginning of the command*.\n\nFor example: ` "
-            + Config.identifier + Config.commands.normal.bossKilled[0] + " " + Config.commands.parameters.force + " " + args.join(' ') + "`")
+        if (message != undefined)
+            notifyDiscordBotError(message, "\n**" + boss.name + "** was already registered as killed on *layer " + layer + "* at **" + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat) 
+                + "**. If you believe this is in error, please try the command again by adding `" + Config.commands.parameters.force + "` to the *beginning of the command*.\n\nFor example: ` "
+                + Config.identifier + Config.commands.normal.bossKilled[0] + " " + Config.commands.parameters.force + " " + args.join(' ') + "`")
         return logger.info("    (bossKilled) - " + boss.name + " was already registered as killed on layer " + layer + ". (killed at: " + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ")")
     }
         
@@ -1872,7 +1873,9 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     const killedTimeParam = args.join(' ')
     if (killedTimeParam == undefined) {
         logger.info('    (bossKilled) - error: killedTimeParam was undefined')
-        return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+        if (message != undefined)
+            notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+        return undefined
     }
 
     // parse any user-entered date
@@ -1882,7 +1885,10 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     // set killedDate to right now if no date was given in command params
     if (killedDate == undefined && killedTimeParam != '')
         if (killedTimeParam != '')
-            return notifyInvalidDate(message)
+            if (message != undefined)
+                return notifyInvalidDate(message)
+            else 
+                return logger.error("(bossKilled) - received invalid date, but message was undefined")
         else
             killedDate = new Date()
 
@@ -2558,6 +2564,7 @@ bot.on('error', error => {
     //  })
 })
 
+var HasInitialized = false
 bot.on('ready', () => {
     logger.info('Connected')
     //logger.info('Logged in as: ' + bot.user.tag + ' - (' + bot.user.id + ')')
@@ -2565,7 +2572,10 @@ bot.on('ready', () => {
     logger.info(Config.botName + ' ' + versionNumber + (Config.debug.enableDebugCommands ? " (Debug Commands Enabled)" : " (Debug Commands Disabled)"))
     logger.info("------------------------------------------------------")
 
-    initializeFromData()
+    if (!HasInitialized) {
+        initializeFromData()
+        HasInitialized = true
+    }
 })
 
 bot.on('message', async message => {
