@@ -6,11 +6,6 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-// Glitch Hosting Constants
-const http = require('http');
-const express = require('express');
-const GlitchApp = express();
-
 const versionNumber = 'v1.3.1'
 
 // Logger configuration
@@ -2581,15 +2576,6 @@ bot.on('ready', () => {
         initializeFromData()
         HasInitialized = true
     }
-
-    GlitchApp.get("/", (request, response) => {
-            logger.info(Date.now() + " Ping Received");
-            response.sendStatus(200);
-        });
-    GlitchApp.listen(process.env.PORT);
-    setInterval(() => {
-        http.get(`http://${process.env.PROJECT_DOMAIN}.glitch.me/`);
-    }, 280000);
 })
 
 bot.on('message', async message => {
