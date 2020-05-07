@@ -70,7 +70,7 @@ function initializeFromData() {
                 bossKilled(undefined, info.killedDate.split(' '), boss, true, false, false, getScoutListFromChannelId(boss.channelId)[index], index+1)
 
             info.scouts.forEach(scout => {
-                beginShift(undefined, scout.startTime, scoutLists, index+1, scout.displayName, scout.userId, boss)
+                beginShift(undefined, new Date(Date.parse(scout.startTime)), scoutLists, index+1, scout.displayName, scout.userId, boss)
             })
         })
 
