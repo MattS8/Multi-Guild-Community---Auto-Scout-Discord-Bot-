@@ -61,12 +61,17 @@ function initializeFromData() {
     InitData.bosses.forEach(initBoss => {
         let boss = Bosses.find(b => b.name == initBoss.name)
         logger.info("boss " + boss.name)
+        let scoutLists = currentScoutsLists.get(boss.name)
         initBoss.layerInfo.forEach((info, index) => {
             if (info.layerId != undefined)
                 boss.layerId[index] = info.layerId
 
             if (info.killedDate != undefined)
                 bossKilled(undefined, info.killedDate.split(' '), boss, true, false, false, getScoutListFromChannelId(boss.channelId)[index], index+1)
+
+            info.scouts.forEach(scout => {
+                beginShift(undefined, scout.startTime, scoutLists, index+1, scout.displayName, scout.userId, boss)
+            })
         })
 
         bot.channels.find(c => c.id == boss.channelId).messages.forEach((msg, index) => {
@@ -1632,34 +1637,37 @@ function resetSheets() {
   * Registers a user has begun scouting the given boss.
   * 
   * @param {*} message 
-  * @param {*} startDate Date/Time the user begun scouting
-  * @param {*} scoutList The list(s) associated with the boss the user is scouting
-  * @param {*} layer The layer the scout is scouting on
+  * @param {Date} startDate Date/Time the user begun scouting
+  * @param {Scout[]} scoutList The list(s) associated with the boss the user is scouting
+  * @param {Number} layer The layer the scout is scouting on
+  * @param {String} displayName
+  * @param {Number} userId
+  * @param {Boss} boss
   */
-function beginShift(message, startDate, scoutList, layer) {
+function beginShift(message, startDate, scoutList, layer, displayName, userId, boss) {
     logger.info("command: beginShift")
-    logger.info("    (beginShift) - " + message.member.displayName + " has begun a shift. (" + message.author.id + ")")
+    logger.info("    (beginShift) - " + displayName + " has begun a shift. (" + userId + ")")
 
     if (Config.hideCommandMessage)
         message.delete().catch(e => { })
 
-    const boss = Bosses.find(b => b.channelId == message.channel.id)
-    if (boss == undefined) {
-        notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-        return loggger.error('(beginShift) - unknown boss with channelId: ' + message.channel.id)
+    // Notify channel about new scout
+    const scoutGuild = getGuildFromDisplayName(displayName)
+    if (scoutGuild == undefined) {
+        logger.info("    (beginShift) - caught user trying to start shift with invalid tag: " + displayName)
+        if (message != undefined)
+            notifyDiscordBotError(message, "You must add your guild name to your Discord nickname before using this bot.")
+        
+        return -1
     }
 
-    // Notify channel about new scout
-    const scoutGuild = getGuildFromDisplayName(message.member.displayName)
-    if (scoutGuild == undefined) return notifyDiscordBotError(message, "You must add your guild name to your Discord nickname before using this bot.")
-
     let title = scoutGuild.sayings != undefined
-        ? scoutGuild.sayings[getRandomInt(0, scoutGuild.sayings.length - 1)].replace("%s", message.member.displayName).replace("%b", boss.name + (numberOfLayers > 1 ? (" on layer " + layer) :  "."))
-        : message.member.displayName + ' started scouting ' + boss.name + (numberOfLayers > 1 ? (" on layer " + layer + ".") : ".")
+        ? scoutGuild.sayings[getRandomInt(0, scoutGuild.sayings.length - 1)].replace("%s", displayName).replace("%b", boss.name + (numberOfLayers > 1 ? (" on layer " + layer) :  "."))
+        : displayName + ' started scouting ' + boss.name + (numberOfLayers > 1 ? (" on layer " + layer + ".") : ".")
 
     let newScout = {
-        userId: message.author.id,
-        displayName: message.member.displayName,
+        userId: userId,
+        displayName: displayName,
         startTime: startDate,
         nickname: undefined,
         checkInID: 0,
@@ -1674,6 +1682,8 @@ function beginShift(message, startDate, scoutList, layer) {
 
     if (!Config.debug.disableSignupsUpdates)
         addScoutToCalendar(newScout, boss, startDate, new Date(), true)   
+
+    saveInitData()
 }
 
 /**
@@ -1734,6 +1744,8 @@ function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, o
         else
             logger.info('    (endShift) - DEBUG: ignoring schdule sheet')
     })
+
+    saveInitData()
 }
 
 function removeScoutFromList(message, boss, layer, scout, scoutList, doSilently, onComplete) {
@@ -1981,7 +1993,7 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
 
 function saveInitData() {
     fs.writeFile('./InitData.json', JSON.stringify(getInitDataObject(), null, '\t'), (err) => {
-        if (err) return logger.error("(bossKilled) - An error has occured.\n" + err.stack)
+        if (err) return logger.error("(saveInitData) - An error has occured.\n" + err.stack)
     })
 }
 
@@ -1997,13 +2009,22 @@ function getInitDataObject() {
             name: boss.name,
             layerInfo: []
         }
-
+        let scoutLists = currentScoutsLists.get(boss.name)
         for (i=0; i<numberOfLayers; i++) {
-            bossData.layerInfo[i] = {}
+            bossData.layerInfo[i] = {
+                scouts: []
+            }
             if (boss.killedAt[i] != undefined)
                 bossData.layerInfo[i].killedDate = boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
             if (boss.layerId[i] != undefined)
                 bossData.layerInfo[i].layerId = boss.layerId[i]
+            scoutLists[i].forEach(scout => {
+                bossData.layerInfo[i].scouts.push({
+                    id: scout.userId,
+                    displayName: scout.displayName,
+                    startTime: scout.startD
+                })
+            })
         }
 
         initDataObject.bosses[index] = bossData
@@ -2642,7 +2663,7 @@ bot.on('message', async message => {
             if (startDate == undefined)
                 startDate = new Date()
 
-            return beginShift(message, startDate, scoutList, layer)
+            return beginShift(message, startDate, scoutList, layer, message.member.displayName, message.author.id, boss)
         }
 
         // End Shift
