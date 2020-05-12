@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.1'
+const versionNumber = 'v1.3.3'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -69,9 +69,14 @@ function initializeFromData() {
             if (info.killedDate != undefined)
                 bossKilled(undefined, info.killedDate.split(' '), boss, true, false, false, getScoutListFromChannelId(boss.channelId)[index], index+1)
 
-            info.scouts.forEach(scout => {
-                beginShift(undefined, new Date(Date.parse(scout.startTime)), scoutLists, index+1, scout.displayName, scout.userId, boss)
-            })
+            if (info.scouts != undefined){
+                logger.info("Scout list: " + info.scouts.length)
+                info.scouts.forEach(scout => {
+                    logger.info("    (scoutList) - scout " + JSON.stringify(scout))
+                    beginShift(undefined, new Date(Date.parse(scout.startTime)), scoutLists, index+1, scout.displayName, scout.id, boss)
+                })
+            }
+
         })
 
         bot.channels.find(c => c.id == boss.channelId).messages.forEach((msg, index) => {
@@ -1648,7 +1653,7 @@ function beginShift(message, startDate, scoutList, layer, displayName, userId, b
     logger.info("command: beginShift")
     logger.info("    (beginShift) - " + displayName + " has begun a shift. (" + userId + ")")
 
-    if (Config.hideCommandMessage)
+    if (Config.hideCommandMessage && message != undefined)
         message.delete().catch(e => { })
 
     // Notify channel about new scout
@@ -1701,7 +1706,7 @@ function beginShift(message, startDate, scoutList, layer, displayName, userId, b
 function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, onComplete) {
     logger.info("command: endShift (layer " + layer + ")")
 
-    if (Config.hideCommandMessage)
+    if (Config.hideCommandMessage && message != undefined)
         message.delete().catch(e => { })
 
     // Get scout user info
@@ -1812,7 +1817,6 @@ function bossSpotted(message, args, command, boss, layer) {
 function resetBossRespawn(boss, suppressNotification, layer) {
     logger.info('command: Reset Boss Respawn')
     const bossChannel = bot.channels.find(c => c.id == boss.channelId)
-    const worldBossAlertChannel = bot.channels.find(c => c.id == Config.worldBossAlertChannelId)
 
     const shouldNotify = bossKilledOnAllLayers(boss)
 
@@ -1839,13 +1843,11 @@ function resetBossRespawn(boss, suppressNotification, layer) {
         showBossStatus(respawnTitle, boss, Config.alertColor)
         showAllBossStatus(respawnTitle)
     }
-    
     else {
         showBossStatus(respawnTitle, boss, Config.alertColor)
         showAllBossStatus(respawnTitle)  
     }
-        
-
+  
     if (!Config.debug.disableSignupsUpdates)
         updateCalendarRespawnWindowText(boss, new Date(0))
 }
@@ -2022,7 +2024,7 @@ function getInitDataObject() {
                 bossData.layerInfo[i].scouts.push({
                     id: scout.userId,
                     displayName: scout.displayName,
-                    startTime: scout.startD
+                    startTime: scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
                 })
             })
         }
