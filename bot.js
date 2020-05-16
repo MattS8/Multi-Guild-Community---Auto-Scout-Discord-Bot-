@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.3'
+const versionNumber = 'v1.3.4'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -57,10 +57,15 @@ function initializeFromData() {
     if (InitData.numberOfLayers != undefined)
         setLayerCount(undefined, InitData.numberOfLayers, undefined, [], true)
 
-    // Init Bosses w/Killed Dates
+    // Init Bosses
     InitData.bosses.forEach(initBoss => {
         let boss = Bosses.find(b => b.name == initBoss.name)
         logger.info("boss " + boss.name)
+
+        boss.logs = initBoss.logs
+        if (boss.logs == undefined)
+            boss.logs = []
+
         let scoutLists = currentScoutsLists.get(boss.name)
         initBoss.layerInfo.forEach((info, index) => {
             if (info.layerId != undefined)
@@ -73,7 +78,7 @@ function initializeFromData() {
                 logger.info("Scout list: " + info.scouts.length)
                 info.scouts.forEach(scout => {
                     logger.info("    (scoutList) - scout " + JSON.stringify(scout))
-                    beginShift(undefined, new Date(Date.parse(scout.startTime)), scoutLists, index+1, scout.displayName, scout.id, boss)
+                    beginShift(undefined, new Date(Date.parse(scout.startTime)), scoutLists, index+1, scout.displayName, scout.id, boss, true)
                 })
             }
 
@@ -87,7 +92,6 @@ function initializeFromData() {
 
     showAllBossStatus("Satus of All World Bosses:")
 }
-
 
 // --------------------------------------------------------------
 // Google Sheet Auth Stuff
@@ -342,25 +346,14 @@ function showLootHelp(message, showAllCommands) {
 
 // -------------------------- Error Functions
 
-/**
- * Notifies the user that the date they tried to
- * append to the end of a command was invalid.
- * Also shows them the current acceptable formats
- * for a date.
- * 
- * @param {Message} message 
- */
-function notifyInvalidDate(message)
-{
-    message.channel.send('<@' + message.author.id + '>\nInvalid date entered. Please try again by either omitting the date or using one of the following formats:'
-        + '\n``MM/DD/YYYY HH:MM AM/PM\nHH:MM AM/PM``')
-}
-
-function notifyDiscordBotError(message, errormessage) {
-    if (Config.hideCommandMessage)
+function notifyDiscordBotError(message, errormessage, user) {
+    if (Config.hideCommandMessage && message != undefined)
         message.delete().catch(e => { })
 
-    message.author.send(':warning: <@' + message.author.id + '> :warning: ' + errormessage)
+    if (message != undefined)
+        message.author.send(':warning: <@' + message.author.id + '> :warning: ' + errormessage)
+    else if (user != undefined)
+        user.send(':warning: <@' + user.id + '> :warning: ' + errormessage)
 }
 
 /**
@@ -447,116 +440,6 @@ function bossKilledOnAllLayers(boss) {
             deadOnAllLayers = false
 
     return deadOnAllLayers
-}
-
-/**
- * Sends a notification to every Green Dragon scouting channel and the World Boss
- * channel notifying people that all green dragons have been killed, and that 
- * they can start spawning again at the given time.
- * 
- * @param {Date} nextRespawnWindow The date at which bosses can start spawning again
- * @param {Number} layer The layer the boss was killed on
- */
-function notifyAllGreenDragonsDead(nextRespawnWindow, layer) {
-    logger.info("    (notifyAllGreenDragonsDead) - Notifying that all Green Dragons have been killed on layer " + layer)
-    const titleStr = 'All Green Dragons have been killed' + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!"))
-    const headerStr = "The respawn cooldown period has begun."
-    const bodyStr = "Next respawn window " + (numberOfLayers > 1 ? (" for layer " + layer) : ("")) +": **" + nextRespawnWindow.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "**"
-    Bosses.forEach(boss => {
-        if (boss.type == "Green Dragon") {
-            bot.channels.find(c => c.id == boss.channelId).send({
-                embed: {
-                    title: titleStr,
-                    color: Config.alertColor,
-                    fields: [{
-                        name: headerStr,
-                        value: bodyStr
-                    }]
-                }
-            })
-        }
-    })
-
-    bot.channels.find(c => c.id == Config.worldBossAlertChannelId).send({
-        embed: {
-            title: titleStr,
-            color: Config.alertColor,
-            fields: [{
-                name: headerStr,
-                value: bodyStr
-            }]
-        }
-    })
-}
-
-/**
- * This function is used whenever a boss becomes spawnable again.
- * This can occur after a server reset or a boss's respawn CD expires.
- * 
- * @param {any} bossChannelId The channel id for the given boss
- */
-function notifyBossRespawn(bossChannelId) {
-    const boss = Bosses.find(b => b.channelId == bossChannelId)
-    if (boss == undefined) {
-        logger.error('(notifyBossRespawn) - no boss found for channelId: ' + bossChannelId)
-        return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-    }
-    const channel = bot.channels.find(c => c.id == bossChannelId)
-    if (channel == undefined) return logger.error('(notifyBossRespawn) - no channel found for channelId: ' + bossChannelId)
-
-    channel.send('@everyone', {
-        embed: {
-            title: '' + boss.name + ' will soon be able to spawn!',
-            color: Config.alertColor,
-            fields: [{
-                name: 'Please begin scouting for the boss by typing ' + Config.identifier + Config.commands.normal.beginShift[0]
-                    + '. Bot commands are pinned, and ' + Config.identifier + Config.commands.normal.listCommands[0] + ' will display them if you need a list.',
-                value: 'You can sign up for future scout shifts by using the `' + Config.identifier + Config.commands.normal.signUp[0] + '` command.\nOr on the google sheet (' 
-                    + Config.signupSheetURL + boss.signupSheetURL + ')',
-                inline: true
-            }],
-            timestamp: new Date()
-        },
-    })
-}
-
-/**
- * Similar to notifyBossRespawn(), this function is used to remind people
- * that a boss is about to come off cooldown. This can occur right before
- * a boss's respawn CD expires, or manually via an admin.
- * 
- * @param {Number} bossChannelId The channel id for the given boss
- */
-function notifyBossRespawnSoon(bossChannelId) {
-    const boss = Bosses.find(b => b.channelId == bossChannelId)
-    if (boss == undefined) {
-        logger.error('(notifyBossRespawnSoon) - no boss found for channelId: ' + bossChannelId)
-        return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-    }
-
-    const channel = bot.channels.find(c => c.id == bossChannelId)
-    if (channel == undefined) {
-        logger.error('(notifyBossRespawnSoon) - no channel found for channelId: ' + bossChannelId)
-        return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-    }
-
-    const nextRespawnDate = getNextRespawnTime(boss.killedAt, boss)
-    if (nextRespawnDate == undefined) {
-        logger.error("(notifyBossRespawnSoon) - couldn't get nextRespawn date for " + boss.name)
-        return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
-    }
-
-    logger.info('    (notifyBossRespawnSoon) - nextRespawn: ' + nextRespawnDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
-    channel.send('@everyone', {
-        embed: {
-            title: '' + boss.name + ' will be able to spawn soon! (' + nextRespawnDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ' server time)',
-            color: Config.alertColor,
-            fields: [{
-                name: 'Please start signing up for at least one 30-minute scouting shift. To sign up for a shift, use the `' + Config.identifier + Config.commands.normal.signUp[0] + '` command.',
-                value: 'Alernatively, you can manually sign up on the google sheet (' + Config.signupSheetURL +  boss.signupSheetURL + ').'
-            }]
-        }
-    })
 }
 
 /**
@@ -689,7 +572,7 @@ function showAllBossStatus(title) {
     })
 
     if (LastAlertMessage != undefined) {
-        LastAlertMessage.delete().catch(e => { })
+        LastAlertMessage.delete().catch(e => { logger.error("unable to delete world boss arlet message... (" + e + ")") })
         LastAlertMessage = undefined
     }
 
@@ -714,7 +597,7 @@ function showBossStatus(title, boss, color) {
     //    2. No Scouts - NONE
     //    3. Scouts - List of scout(s) and the time(s) they started scouting
     for (i = 0; i<numberOfLayers; i++) {
-        //logger.info("    (showBossStatus) - Length of scout list on layer " + (i+1) + ": " + scoutListAllLayers[i].size)
+        //logger.info("    (showBossStatus) - Length of scout list on layer " + (i+1) + ": " + scoutListAllLayers[i].size) 
         embededMessage += "\n\n__Scouts " + (numberOfLayers > 1 ? (" on **Layer " + (i+1) + "**") : "" )  + "__" + (boss.layerId[i] != undefined ? (" [zone **" + boss.layerId[i] + "**] :") : ":")
         if (boss.dead[i] != undefined) {
             embededMessage += "\n\t\t***---- DEAD ---- ***\n(Killed on: *" + boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "*)"
@@ -735,23 +618,66 @@ function showBossStatus(title, boss, color) {
     embededMessage += "\n\n For a list a commands type ``" + Config.identifier + Config.commands.normal.listCommands[0] + "``" + " or check the ***Pinned Messages***"
 
     if (boss.statusMessage != undefined) {
-        boss.statusMessage.delete().catch(e => { })
-        boss.statusMessage = undefined
+        boss.statusMessage.edit({
+            embed: {
+                title: title,
+                color: color,
+                fields: [{
+                    name: embededTitle,
+                    value: embededMessage,
+                    inline: true
+                }],
+                timestamp: new Date()
+            },
+        }).then(() => {
+            addScoutReactions(boss.statusMessage, 1)
+        })
+    } else {
+        channel.send({
+            embed: {
+                title: title,
+                color: color,
+                fields: [{
+                    name: embededTitle,
+                    value: embededMessage,
+                    inline: true
+                }],
+                timestamp: new Date()
+            },
+        }).then(newMessage => { 
+            addScoutReactions(newMessage, 1)
+            boss.statusMessage = newMessage 
+        })
     }
-
-    channel.send({
-        embed: {
-            title: title,
-            color: color,
-            fields: [{
-                name: embededTitle,
-                value: embededMessage,
-                inline: true
-            }],
-            timestamp: new Date()
-        },
-    }).then(newMessage => { boss.statusMessage = newMessage })
 }
+
+function addScoutReactions(message, curLayer) {
+    if (curLayer > numberOfLayers)
+        return
+
+        switch(curLayer) {
+            case 1:
+                message.react(numberOfLayers > 1 ? '1️⃣' : '✅').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 2:
+                message.react('2️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 3:
+                message.react('3️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 4:
+                message.react('4️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 5:
+                message.react('5️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 6:
+                message.react('6️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            default:
+                logger.error("(addScoutReactions) - There were too many layers... " + curLayer)
+        }
+} 
 
 /**
  * This function is used when a user requests an up-to-date
@@ -792,63 +718,170 @@ function showCurrentScouts(message, boss, showAll) {
 function showScoutingCommands(message, showAllCommands, showToChannel) {
     logger.info('Command: showScoutingCommands')
 
-    
     const boss = Bosses.find(b => b.channelId == message.channel.id)
     if (boss == undefined) {
         loggger.error('(showScoutingCommands) - unknown boss with channelId: ' + message.channel.id)
         return notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
     }
-    const title = '---- ' + boss.name + ' Commands for ' + Config.botName + ' ----'
-
-    logger.info("    (showScoutingCommands) - boss type: " + boss.type)
-
-    const helpText = "**" + (showAllCommands ? listAllVariations(Config.commands.normal.beginShift) : Config.identifier + Config.commands.normal.beginShift[0]) + (numberOfLayers > 1 ? (" layer=<layer number> ") : ("")) + "**"
-        + "```Register the start of your shift" + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) + " \n\nYou can manually set the starting time by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM "
-        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.beginShift[0] + (numberOfLayers > 1 ? (' layer=2 ') : ('')) + ' 12/18/2020 5:45 PM\')```'
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.endShift) : Config.identifier + Config.commands.normal.endShift[0]) + (numberOfLayers > 1 ? (" layer=<layer number> ") : ("")) + "**"
-        + '```Register the end of your shift' + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) + ' \n\nYou can manually set the ending time by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM '
-        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.endShift[0] + (numberOfLayers > 1 ? (' layer=2 ') : ('')) + ' 12/18/2020 5:45 PM\')```'
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.bossSpotted) : Config.identifier + Config.commands.normal.bossSpotted[0]) + " <Character Name>**"
-        + '```Notify players that ' + boss.name + ' was spotted. \n\nYou must add a character name to the end of the command, notifying players who they should whisper for an invite.```\n\n```(Example: \''
-        + Config.identifier + Config.commands.normal.bossSpotted[0] + ' raidleader\')```'
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.bossKilled) : Config.identifier + Config.commands.normal.bossKilled[0]) + (numberOfLayers > 1 ? (" layer=<layer number> ") : (""))  + /*(boss.type == "Green Dragon" ? " <Dragon Name>" : "") +*/ "**"
-        + '```Register that ' + boss.name + ' was killed' + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) +'\n\nYou can manually set the time of death by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM '
-        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.bossKilled[0] + ' 12/18/2020 5:45 PM\')```'
-        + '\n**' + (showAllCommands ? listAllVariations(Config.commands.normal.resetBossRespawn) : Config.identifier + Config.commands.normal.resetBossRespawn[0]) + (numberOfLayers > 1 ? (" layer=<layer number> ") : ("")) + '**'
-        + '```Resets ' + boss.name + '\'s respawn timer ' + (numberOfLayers > 1 ? (' on the given layer,') : (',')) +' signifying that an unexpected server restart has occurred. ' + boss.name + ' will immediately be available for scouting.```'
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.signUp) : Config.identifier + Config.commands.normal.signUp[0]) + " <Start Date> <End Date>**"
-        + "```Signs up for a scouting shift for " + boss.name + " from Start Date until End Date. \n\nDates must be in one of these formats: \n\t'MM/DD/YYYY HH:MM AM/PM' "
-        + "\n\t'HH:MM AM/PM'```"
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.setSummonerLocation) : Config.identifier + Config.commands.normal.setSummonerLocation[0]) + "**"
-        + "```Registers a summoner at " + boss.location + ".```"
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.removeScoutFromList) : Config.identifier + Config.commands.normal.removeSummonerLocation[0]) + "**"
-        + "```Removes " + boss.location + " from the list of places you have a summoner at.```"
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.showCurrentScouts) : Config.identifier + Config.commands.normal.showCurrentScouts[0]) + "**"
-        + "```Manually updates the satus message for " + boss.name + ".\n\nYou can optionally trigger this command for all bosses by adding " + Config.commands.parameters.all 
-        + " to the end of the command.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.showCurrentScouts[0] + " " + Config.commands.parameters.all + "')```"
-        + "\n**" + (showAllCommands ? listAllVariations(Config.commands.normal.setLayerId) : Config.identifier + Config.commands.normal.setLayerId[0]) + " layer=<layer number> <id>**"
-        + "```Set the layer id for " + boss.location + " on the given layer.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.setLayerId[0] 
-        + " layer=2 88')```"
-        + '\n**' + (showAllCommands ? listAllVariations(Config.commands.normal.listCommands) : Config.identifier + Config.commands.normal.listCommands[0]) + '**'
-        + '```Show a list of valid commands for the bot.```'
+    const title1 = 'Scouting Commands:'
+    const title2 = 'Summoner Commands:'
+    const title3 = 'Additional Commands:'
 
     if (Config.hideCommandMessage) message.delete().catch(e => { })
 
+    const isInline = false
+    const msgColor = getGuildFromDisplayName(message.member.displayName).color
     if (showToChannel) {
         message.channel.send({
             embed: {
-                title: title,
-                color: getGuildFromDisplayName(message.member.displayName).color,
-                description: helpText
+                title: title1,
+                color: msgColor,
+                fields: [
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.beginShift) : Config.identifier + Config.commands.normal.beginShift[0]) + (numberOfLayers > 1 ? (" layer=<layer #> ") : ("")) + "**",
+                        value: "```Register the start of your shift" + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) + " \n\nYou can manually set the starting time by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM "
+                        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.beginShift[0] + (numberOfLayers > 1 ? (' layer=2 ') : ('')) + ' 12/18/2020 5:45 PM\')```',
+                        inline: isInline
+                    },
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.endShift) : Config.identifier + Config.commands.normal.endShift[0]) + (numberOfLayers > 1 ? (" layer=<layer #> ") : ("")) + "**",
+                        value: '```Register the end of your shift' + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) + ' \n\nYou can manually set the ending time by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM '
+                        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.endShift[0] + (numberOfLayers > 1 ? (' layer=2 ') : ('')) + ' 12/18/2020 5:45 PM\')```',
+                        inline: isInline
+                    },
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.bossSpotted) : Config.identifier + Config.commands.normal.bossSpotted[0]) + " <Character Name>**",
+                        value: '```Notify players that ' + boss.name + ' was spotted. \n\nYou must add a character name to the end of the command so that players will know who to whisper for an invite in game.```\n\n```(Example: \''
+                        + Config.identifier + Config.commands.normal.bossSpotted[0] + ' raidleader\')```',
+                        inline: isInline
+                    },
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.showCurrentScouts) : Config.identifier + Config.commands.normal.showCurrentScouts[0]) + "**",
+                        value: "```Manually updates the satus message for " + boss.name + ".\n\nYou can optionally trigger this command for all bosses by adding " + Config.commands.parameters.all 
+                        + " to the end of the command.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.showCurrentScouts[0] + " " + Config.commands.parameters.all + "')```",
+                        inline: isInline
+                    }
+                ]
             }
+        }).then(() => {
+            message.channel.send({
+                embed: {
+                    title: title2,
+                    color: msgColor,
+                    fields: [
+                        {
+                            name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.setSummonerLocation) : Config.identifier + Config.commands.normal.setSummonerLocation[0]) + "**",
+                            value: "```Registers a summoner at " + boss.location + ".```",
+                            inline: isInline
+                        },
+                        {
+                            name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.removeScoutFromList) : Config.identifier + Config.commands.normal.removeSummonerLocation[0]) + "**",
+                            value: "```Removes " + boss.location + " from the list of places you have a summoner at.```",
+                            inline: isInline
+                        }
+                    ]
+                }
+            }).then(() => {
+                message.channel.send({
+                    embed: {
+                        title: title3,
+                        color: msgColor,
+                        fields: [
+                            {
+                                name: '**' + (showAllCommands ? listAllVariations(Config.commands.normal.resetBossRespawn) : Config.identifier + Config.commands.normal.resetBossRespawn[0]) + (numberOfLayers > 1 ? (" layer=<layer number> ") : ("")) + '**',
+                                value: '```Resets ' + boss.name + '\'s respawn timer ' + (numberOfLayers > 1 ? (' on the given layer,') : (',')) +' signifying that an unexpected server restart has occurred. ' + boss.name + ' will immediately be available for scouting.```',
+                                inline: isInline
+                            },
+                            {
+                                name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.setLayerId) : Config.identifier + Config.commands.normal.setLayerId[0]) + " layer=<layer #> <id>**",
+                                value: "```Set the layer id for " + boss.location + " on the given layer.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.setLayerId[0] + " layer=2 88')```",
+                                inline: isInline
+                            },
+                            {
+                                name: '**' + (showAllCommands ? listAllVariations(Config.commands.normal.listCommands) : Config.identifier + Config.commands.normal.listCommands[0]) + '**',
+                                value: '```Show a list of valid commands for the bot.```',
+                                inline: isInline
+                            },
+                        ]
+                    }
+                })
+            })
         })
     } else {
         message.author.send({
             embed: {
-                title: title,
-                color: getGuildFromDisplayName(message.member.displayName).color,
-                description: helpText
+                title: title1,
+                color: msgColor,
+                fields: [
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.beginShift) : Config.identifier + Config.commands.normal.beginShift[0]) + (numberOfLayers > 1 ? (" layer=<layer #> ") : ("")) + "**",
+                        value: "```Register the start of your shift" + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) + " \n\nYou can manually set the starting time by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM "
+                        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.beginShift[0] + (numberOfLayers > 1 ? (' layer=2 ') : ('')) + ' 12/18/2020 5:45 PM\')```',
+                        inline: isInline
+                    },
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.endShift) : Config.identifier + Config.commands.normal.endShift[0]) + (numberOfLayers > 1 ? (" layer=<layer #> ") : ("")) + "**",
+                        value: '```Register the end of your shift' + (numberOfLayers > 1 ? (' on the given layer.') : ('.')) + ' \n\nYou can manually set the ending time by adding it to the end of the command in one of these formats: \n\t\'MM/DD/YYYY HH:MM '
+                        + 'AM/PM\' \n\t\'HH:MM AM/PM\'```\n\n```(Example: \'' + Config.identifier + Config.commands.normal.endShift[0] + (numberOfLayers > 1 ? (' layer=2 ') : ('')) + ' 12/18/2020 5:45 PM\')```',
+                        inline: isInline
+                    },
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.bossSpotted) : Config.identifier + Config.commands.normal.bossSpotted[0]) + " <Character Name>**",
+                        value: '```Notify players that ' + boss.name + ' was spotted. \n\nYou must add a character name to the end of the command so that players will know who to whisper for an invite in game.```\n\n```(Example: \''
+                        + Config.identifier + Config.commands.normal.bossSpotted[0] + ' raidleader\')```',
+                        inline: isInline
+                    },
+                    {
+                        name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.showCurrentScouts) : Config.identifier + Config.commands.normal.showCurrentScouts[0]) + "**",
+                        value: "```Manually updates the satus message for " + boss.name + ".\n\nYou can optionally trigger this command for all bosses by adding " + Config.commands.parameters.all 
+                        + " to the end of the command.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.showCurrentScouts[0] + " " + Config.commands.parameters.all + "')```",
+                        inline: isInline
+                    }
+                ]
             }
+        }).then(() => {
+            message.author.send({
+                embed: {
+                    title: title2,
+                    color: msgColor,
+                    fields: [
+                        {
+                            name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.setSummonerLocation) : Config.identifier + Config.commands.normal.setSummonerLocation[0]) + "**",
+                            value: "```Registers a summoner at " + boss.location + ".```",
+                            inline: isInline
+                        },
+                        {
+                            name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.removeScoutFromList) : Config.identifier + Config.commands.normal.removeSummonerLocation[0]) + "**",
+                            value: "```Removes " + boss.location + " from the list of places you have a summoner at.```",
+                            inline: isInline
+                        }
+                    ]
+                }
+            }).then(() => {
+                message.author.send({
+                    embed: {
+                        title: title3,
+                        color: msgColor,
+                        fields: [
+                            {
+                                name: '**' + (showAllCommands ? listAllVariations(Config.commands.normal.resetBossRespawn) : Config.identifier + Config.commands.normal.resetBossRespawn[0]) + (numberOfLayers > 1 ? (" layer=<layer number> ") : ("")) + '**',
+                                value: '```Resets ' + boss.name + '\'s respawn timer ' + (numberOfLayers > 1 ? (' on the given layer,') : (',')) +' signifying that an unexpected server restart has occurred. ' + boss.name + ' will immediately be available for scouting.```',
+                                inline: isInline
+                            },
+                            {
+                                name: "**" + (showAllCommands ? listAllVariations(Config.commands.normal.setLayerId) : Config.identifier + Config.commands.normal.setLayerId[0]) + " layer=<layer #> <id>**",
+                                value: "```Set the layer id for " + boss.location + " on the given layer.```\n\n```(Example: '" + Config.identifier + Config.commands.normal.setLayerId[0] + " layer=2 88')```",
+                                inline: isInline
+                            },
+                            {
+                                name: '**' + (showAllCommands ? listAllVariations(Config.commands.normal.listCommands) : Config.identifier + Config.commands.normal.listCommands[0]) + '**',
+                                value: '```Show a list of valid commands for the bot.```',
+                                inline: isInline
+                            },
+                        ]
+                    }
+                })
+            })
         })
     }
 }
@@ -1453,10 +1486,9 @@ function createNewAttendanceRow(guildPos, rowNumber, username, displayName, id, 
  * @param {Message} message 
  * @param {() => {}} onComplete 
  */
-async function logHours(scout, endTime, message, onComplete) {
+async function logHours(scout, endTime, message, channelId, onComplete) {
     const sheets = google.sheets({ version: 'v4', auth: newAuth })
     const attendanceSheet = Config.sheets.attendanceSheet
-    const channelId = message.channel.id
 
     // Calculated time spent scouting
     const timeSpent = Math.round((Math.abs(scout.startTime - endTime) / 36e5) * 100) / 100
@@ -1466,21 +1498,24 @@ async function logHours(scout, endTime, message, onComplete) {
     // Discord user
     bot.fetchUser(scout.userId).then(user => {
         if (user == undefined) {
-            notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+            if (message != undefined)
+                notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
             return logger.info('    (logHours) - failed to get user from userId: ' + scout.userId)
         }
     
         // Boss scouted
         const loggedBoss = Bosses.find(b => b.channelId == channelId)
         if (loggedBoss == undefined) {
-            notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+            if (message != undefined)
+                notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
             return logger.info('    (logHours) - failed to get boss from channelId: ' + channelId)
         }
     
         // Boss Position
         let bossPosition = Bosses.findIndex(b => b.name == loggedBoss.name)
         if (bossPosition == -1) {
-            notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+            if (message != undefined)
+                notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
             return logger.info('    (logHours) - failed to find boss position for ' + loggedBoss.name)
         }
     
@@ -1491,7 +1526,8 @@ async function logHours(scout, endTime, message, onComplete) {
             logger.info('    (logHours) - userAttendanceInfo: ' + userAttendanceInfo)
     
             if (userAttendanceInfo.length == 0) {
-                notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+                if (message != undefined)
+                    notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
                 return logger.info('    (logHours) - failed to get guild sheet info')
             }
     
@@ -1501,7 +1537,7 @@ async function logHours(scout, endTime, message, onComplete) {
     
                 rowNumber = userAttendanceInfo[3] + attendanceSheet.headerRows
                 guildPos = getGuildPosition(scout.displayName)
-                if (guildPos == undefined) return notifyUserHasInvalidGuildTag(message)
+                if (guildPos == undefined && message != undefined) return notifyUserHasInvalidGuildTag(message)
     
                 // Create new row
                 let newRow = createNewAttendanceRow(guildPos, rowNumber, user.username, scout.displayName, scout.userId, 'N/A')
@@ -1648,8 +1684,9 @@ function resetSheets() {
   * @param {String} displayName
   * @param {Number} userId
   * @param {Boss} boss
+  * @param {Boolean} doSilently
   */
-function beginShift(message, startDate, scoutList, layer, displayName, userId, boss) {
+function beginShift(message, startDate, scoutList, layer, displayName, userId, boss, doSilently) {
     logger.info("command: beginShift")
     logger.info("    (beginShift) - " + displayName + " has begun a shift. (" + userId + ")")
 
@@ -1665,6 +1702,8 @@ function beginShift(message, startDate, scoutList, layer, displayName, userId, b
         
         return -1
     }
+
+    logMessage("START - " + displayName, startDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
 
     let title = scoutGuild.sayings != undefined
         ? scoutGuild.sayings[getRandomInt(0, scoutGuild.sayings.length - 1)].replace("%s", displayName).replace("%b", boss.name + (numberOfLayers > 1 ? (" on layer " + layer) :  "."))
@@ -1683,7 +1722,8 @@ function beginShift(message, startDate, scoutList, layer, displayName, userId, b
     logger.info('    (beginShift) - ' + newScout.displayName + ' (' + newScout.userId + ') started scouting ' + boss.name + ' at ' + newScout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
     scoutList[layer-1].set(newScout.userId, newScout)
 
-    showBossStatus(title, boss, scoutGuild.color)
+    if (!doSilently)
+        showBossStatus(title, boss, scoutGuild.color)
 
     if (!Config.debug.disableSignupsUpdates)
         addScoutToCalendar(newScout, boss, startDate, new Date(), true)   
@@ -1712,32 +1752,34 @@ function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, o
     // Get scout user info
     bot.fetchUser(scout.userId).then(user => {
         if (user == undefined) {
-            notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
+            if (message != undefined)
+                notifyDiscordBotError(message, Config.genericErrorMessages[getRandomInt(0, Config.genericErrorMessages.length)])
             return logger.error("(endShift) - ERROR: couldn't find user with id " + scout.userId)
         }
     
         // Check for valid range
         if (scout.startTime > endTime) {
             logger.error('(endShift) - ERROR: player ' + scout.displayName + ' (' + scout.userId + ') has a startTime that was greater than the endTime!')
-            if (!doSilently)
-                return notifyInvalidDate(message)
+            if (!doSilently && message != undefined)
+                return notifyDiscordBotError(message, 'Invalid date entered. Please try again by either omitting the date or using one of the following formats:'
+                + '\n``MM/DD/YYYY HH:MM AM/PM\nHH:MM AM/PM``')
             else
                 return
         }
     
         logger.info("    (endShift) - " + scout.displayName + " has ended their shift at " + endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
-    
-        logger.info("scoutList.size = " + scoutList.size)
+        logMessage("STOP - " + scout.displayName, scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
+
         // Attendance Sheet Logic
         if (!Config.debug.disableAttendanceUpdates)
-            logHours(scout, endTime, message, () => {
+            logHours(scout, endTime, message, boss.channelId, () => {
                 logger.info("    (endShift) - clearing up scout " + scout.displayName)
-                removeScoutFromList(message, boss, layer, scout, scoutList, doSilently, onComplete)
+                removeScoutFromList(boss, layer, scout, scoutList, doSilently, onComplete)
             })
         else {
             logger.info("    (endShift) - DEBUG: ignoring attendance update")
             logger.info("    (endShift) - clearing up scout " + scout.displayName)
-            removeScoutFromList(message, boss, layer, scout, scoutList, doSilently, onComplete)
+            removeScoutFromList(boss, layer, scout, scoutList, doSilently, onComplete)
         }
     
         // Sign Up Sheet Logic
@@ -1753,7 +1795,7 @@ function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, o
     saveInitData()
 }
 
-function removeScoutFromList(message, boss, layer, scout, scoutList, doSilently, onComplete) {
+function removeScoutFromList(boss, layer, scout, scoutList, doSilently, onComplete) {
     // Remove scout
     clearInterval(scout.checkInID)
     clearInterval(scout.calendarId)
@@ -1816,7 +1858,6 @@ function bossSpotted(message, args, command, boss, layer) {
  */
 function resetBossRespawn(boss, suppressNotification, layer) {
     logger.info('command: Reset Boss Respawn')
-    const bossChannel = bot.channels.find(c => c.id == boss.channelId)
 
     const shouldNotify = bossKilledOnAllLayers(boss)
 
@@ -1843,13 +1884,15 @@ function resetBossRespawn(boss, suppressNotification, layer) {
         showBossStatus(respawnTitle, boss, Config.alertColor)
         showAllBossStatus(respawnTitle)
     }
-    else {
-        showBossStatus(respawnTitle, boss, Config.alertColor)
-        showAllBossStatus(respawnTitle)  
-    }
+    // else {
+    //     showBossStatus(respawnTitle, boss, Config.alertColor)
+    //     showAllBossStatus(respawnTitle)  
+    // }
   
     if (!Config.debug.disableSignupsUpdates)
         updateCalendarRespawnWindowText(boss, new Date(0))
+
+    logMessage("RESPAWN", (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
 }
 
  /**
@@ -1900,7 +1943,8 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     if (killedDate == undefined && killedTimeParam != '')
         if (killedTimeParam != '')
             if (message != undefined)
-                return notifyInvalidDate(message)
+                return notifyDiscordBotError(message, 'Invalid date entered. Please try again by either omitting the date or using one of the following formats:'
+                + '\n``MM/DD/YYYY HH:MM AM/PM\nHH:MM AM/PM``')
             else 
                 return logger.error("(bossKilled) - received invalid date, but message was undefined")
         else
@@ -1912,6 +1956,10 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     boss.up[layerIndex] = undefined
     boss.dead[layerIndex] = true
     logger.info('    (bossKilled) - killed at: ' + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat))
+    logMessage("KILLED", boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+            + (numberOfLayers > 1 ? (" on layer " + layer) : "")
+            + (message != undefined ? (" (reported by " + message.member.displayName + ").") : ".") , 
+        boss)
 
     // find next respawn time
     let nextRespawn = undefined
@@ -2009,6 +2057,7 @@ function getInitDataObject() {
     Bosses.forEach((boss, index) => {
         let bossData = {
             name: boss.name,
+            logs: boss.logs,
             layerInfo: []
         }
         let scoutLists = currentScoutsLists.get(boss.name)
@@ -2383,6 +2432,18 @@ function changeKeyword(message, newKeyword) {
     saveInitData()
 }
 
+function getEmojiForLayer(layer) {
+    switch (layer) {
+        case 1: return '1️⃣'
+        case 2: return '2️⃣'
+        case 3: return '3️⃣'
+        case 4: return '4️⃣'
+        case 5: return '5️⃣'
+        case 6: return '6️⃣'
+        default: return undefined
+    }
+}
+
 /**
  * Sets the current projected number of layers 
  * for the server. 
@@ -2399,7 +2460,30 @@ function setLayerCount(message, amount, boss, layerIds, doSilently) {
     if (Config.hideCommandMessage && message != undefined)
         message.delete().catch(e => { })
 
-    numberOfLayers = amount < 1 ? 1 : amount
+    if (amount < 1) return logger.error("(setLayerCount) Bad layer count given: " + amount)
+
+    while (numberOfLayers > amount) {
+        Bosses.forEach(boss => {
+            const scoutList = getScoutListFromChannelId(boss.channelId)
+            endAllShifts(undefined, scoutList[numberOfLayers-1], boss, numberOfLayers-1, true)
+            if (boss.statusMessage != undefined && boss.statusMessage.reactions != undefined)
+                boss.statusMessage.reactions.get(getEmojiForLayer(numberOfLayers)).remove().catch(e => logger.error("failed to remove emoji..."))
+        })
+        numberOfLayers--
+    }
+    
+    numberOfLayers = amount
+
+    if (numberOfLayers == 1)
+        Bosses.forEach(boss => {
+            if (boss.statusMessage != undefined && boss.statusMessage.reactions != undefined)
+                boss.statusMessage.reactions.get(getEmojiForLayer(numberOfLayers)).remove().catch(e => logger.error("failed to remove emoji..."))
+        })
+    else
+        Bosses.forEach(boss => {
+            if (boss.statusMessage != undefined && boss.statusMessage.reactions != undefined)
+                boss.statusMessage.reactions.get('✅').remove().catch(e => logger.error("failed to remove emoji..."))
+        })
 
     // Initialize layered variables
     for (i=0; i<numberOfLayers; i++) {
@@ -2416,7 +2500,7 @@ function setLayerCount(message, amount, boss, layerIds, doSilently) {
 
     let embededMessage = "Number of layers predicted: " + amount
 
-    if (!doSilently)
+    if (!doSilently) {
         message.channel.send({
             embed: {
                 title: 'Number of layers has changed!',
@@ -2428,7 +2512,14 @@ function setLayerCount(message, amount, boss, layerIds, doSilently) {
                 }],
                 timestamp: new Date()
             },
-        })
+        }).then((message => {
+            setTimeout(deleteMessage, 10000, message)
+            Bosses.forEach(boss => {
+                showBossStatus("Number of Layers has been changed!", boss, Config.alertColor, true)
+            })
+            showAllBossStatus("Number of Layers has been changed!")
+        }))
+    }
 
     saveInitData()
 }
@@ -2498,8 +2589,7 @@ function beginUserShift(message, args, layer) {
         // Check scout list
         let scoutList = getScoutListFromChannelId(message.channel.id)
         if (scoutList[layer-1].get(user.id) != undefined) {
-            userAlreadyScouting(message)
-            return
+            return notifyUserAlreadyScouting(message, Bosses.find(b => b.channelId = message.channel.id), layer)
         }
     
         // Check boss
@@ -2601,6 +2691,163 @@ bot.on('ready', () => {
     }
 })
 
+bot.on('messageReactionRemove', async (reaction, user) => {
+    if (user.bot) return
+
+    if (reaction.partial) {
+		try {
+			await reaction.fetch();
+		} catch (error) {
+			console.log('Something went wrong when fetching the message: ', error);
+			// Return as `reaction.message.author` may be undefined/null
+			return;
+		}
+    }
+
+    let message = reaction.message, emoji = reaction.emoji
+    
+    const boss = Bosses.find(b => b.channelId == message.channel.id)
+    if (boss == undefined) return
+    
+    const scoutList = getScoutListFromChannelId(message.channel.id)
+    const member = bot.guilds.get(Config.serverId).member(user)
+    if (member == undefined) {
+        return logger.error("undefined user...")
+    }
+
+    switch (emoji.name) { 
+        case '✅':
+            if (scoutList[0] != undefined && scoutList[0].get(user.id) != undefined)
+                endShift(undefined, scoutList[0].get(user.id), boss, 1, new Date(), scoutList[0], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        case '1️⃣': 
+            if (scoutList[0] != undefined && scoutList[0].get(user.id) != undefined)
+                endShift(undefined, scoutList[0].get(user.id), boss, 1, new Date(), scoutList[0], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        case '2️⃣':
+            if (scoutList[1] != undefined && scoutList[1].get(user.id) != undefined)
+                endShift(undefined, scoutList[1].get(user.id), boss, 2, new Date(), scoutList[1], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        case '3️⃣':
+            if (scoutList[2] != undefined && scoutList[2].get(user.id) != undefined) 
+                endShift(undefined, scoutList[2].get(user.id), boss, 3, new Date(), scoutList[2], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        case '4️⃣':
+            if (scoutList[3] != undefined && scoutList[3].get(user.id) != undefined) 
+                endShift(undefined, scoutList[3].get(user.id), boss, 4, new Date(), scoutList[3], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        case '5️⃣':
+            if (scoutList[4] != undefined && scoutList[4].get(user.id) != undefined) 
+                endShift(undefined, scoutList[4].get(user.id), boss, 5, new Date(), scoutList[4], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        case '6️⃣':
+            if (scoutList[5] != undefined && scoutList[5].get(user.id) != undefined) 
+                endShift(undefined, scoutList[5].get(user.id), boss, 6, new Date(), scoutList[5], false, () => { })
+            // else
+            //     notifyDiscordBotError(message, "Unable to end shift. Are you sure you registered to scout for this boss?")
+            break
+        default: 
+            logger.info("Unknown Emoji removed from " + boss.name + " status message: " + emoji.name)
+    }
+
+})
+
+bot.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return
+
+    if (reaction.partial) {
+		try {
+			await reaction.fetch();
+		} catch (error) {
+			console.log('Something went wrong when fetching the message: ', error);
+			// Return as `reaction.message.author` may be undefined/null
+			return;
+		}
+    }
+
+    let message = reaction.message, emoji = reaction.emoji
+
+    const boss = Bosses.find(b => b.channelId == message.channel.id)
+    if (boss == undefined) return
+
+    const scoutList = getScoutListFromChannelId(message.channel.id)
+    const member = bot.guilds.get(Config.serverId).member(user)
+    if (member == undefined) {
+        return logger.error("undefined user...")
+    }
+
+    switch (emoji.name) {
+        case '✅':
+            if (isValidBeginShift(boss, 1, scoutList, user.id)) 
+                beginShift(undefined, new Date(), scoutList, 1, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '1️⃣':
+            if (isValidBeginShift(boss, 1, scoutList, user.id)) 
+                beginShift(undefined, new Date(), scoutList, 1, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '2️⃣':
+            if (isValidBeginShift(boss, 2, scoutList, user.id))
+                beginShift(undefined, new Date(), scoutList, 2, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '3️⃣':
+            if (isValidBeginShift(boss, 3, scoutList, user.id)) 
+                beginShift(undefined, new Date(), scoutList, 3, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '4️⃣':
+            if (isValidBeginShift(boss, 4, scoutList, user.id)) 
+                beginShift(undefined, new Date(), scoutList, 4, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '5️⃣':
+            if (isValidBeginShift(boss, 5, scoutList, user.id)) 
+                beginShift(undefined, new Date(), scoutList, 5, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '6️⃣': 
+        if (isValidBeginShift(boss, 6, scoutList, user.id))
+                beginShift(undefined, new Date(), scoutList, 6, member.displayName, user.id, boss, false)
+            // else
+            //     notifyDiscordBotError(undefined, "Unable to start your shift. Please ensure you have a proper guild tag, as per #rules-and-ideology", user)
+            break
+        case '‼':
+            queryForRaidLeader(message)
+            break
+        default: 
+            logger.info("Unknown Emoji added to " + boss.name + " status message: " + emoji.name)
+    }
+})
+
+function isValidBeginShift(boss, layer, scoutList, userId) {
+    // Ensure boss is scoutable
+    if (boss.dead[layer-1] != undefined) return false
+
+    if (scoutList[layer-1].get(userId) != undefined) return false
+
+    return true
+}
+
 bot.on('message', async message => {
     // Ignore other bot messages
     if (message.author.bot) return
@@ -2625,10 +2872,6 @@ bot.on('message', async message => {
     // Splice command message
     const args = message.content.slice(1).trim().split(/ +/g)
     const command = args.shift().toLowerCase()
-
-    // BOSS LOGS COMMANDS
-    // if (message.channel.id == Config.bossLogs.channelId)
-    //     return parseBossLogsCommand(message, command, args)
 
     // BOSS LOOT COMMANDS
     if (message.channel.id == Config.bossLoot.channelId)
@@ -2665,7 +2908,7 @@ bot.on('message', async message => {
             if (startDate == undefined)
                 startDate = new Date()
 
-            return beginShift(message, startDate, scoutList, layer, message.member.displayName, message.author.id, boss)
+            return beginShift(message, startDate, scoutList, layer, message.member.displayName, message.author.id, boss, false)
         }
 
         // End Shift
@@ -2769,9 +3012,6 @@ bot.on('message', async message => {
                 return setLayerCount(message, amount, boss, layerIds, getArg(args, Config.commands.parameters.silent) != undefined)
             }
 
-            // Boss Respawn Reminder
-            if (Config.commands.master.remindRespawn.map(strToLower).includes(command)) return notifyBossRespawnSoon(message.channel.id)
-
             // Reset Calendars
             if (Config.commands.master.resetCalendar.map(strToLower).includes(command)) {
                 message.delete().catch(e => { })
@@ -2870,8 +3110,6 @@ bot.on('message', async message => {
 
             if (command == 'testgetnexttuesday') return logger.info('DEBUG: Next tuesday: ' + getNextTuesday(getDateFromParam(args.join(' '))).toLocaleString('en-US', Config.dateFormats.killedDateFormat))
 
-            if (command == "testrespawn") return notifyBossRespawn(message.channel.id)
-
             if (command == "testresetcals") return resetCalendars()
 
             if (command == "testresetcal") {
@@ -2904,6 +3142,10 @@ bot.on('message', async message => {
 
     return logger.info('    - Not a valid command: ' + command)
 })
+
+function queryForRaidLeader(message) {
+    logger.info("Command: QueryForRaidLeader")
+}
 
 /**
  * Parses input against all loot commands.
@@ -2946,6 +3188,42 @@ function parseBossLootCommand(message, command, args) {
 // --------------------------------------------------------------
 // Generic Helper Functions
 // --------------------------------------------------------------
+
+// -------------------------- Logging Functions
+
+function logMessage(msgHeader, msgBody, boss) {
+    const logChannel = bot.channels.find(c => c.id == Config.scoutLog)
+
+    if (logChannel != undefined && boss != undefined) {
+        boss.logs.push({
+            name: msgHeader,
+            value: msgBody
+        })
+
+        if (boss.logMessage != undefined) {
+            boss.logMessage.edit({
+                embed: {
+                    title: boss.name,
+                    color: Config.alertColor,
+                    fields: boss.logs
+                }
+            })
+        } else {
+            logChannel.send({
+                embed: {
+                    title: boss.name,
+                    color: Config.alertColor,
+                    fields: boss.logs
+                }
+            }).then(newMessage => {boss.logMessage = newMessage })
+        }
+    }
+
+    fs.appendFile('./Events.log', (new Date().toLocaleString("en-US", Config.dateFormats.killedDateFormat)) + ": " + msgHeader + " - " + msgBody + "\n", (err) => {
+        if (err) return logger.error("(logMessage) - An error has occured.\n" + err.stack)
+    })
+}
+
 
 // -------------------------- Parsing Functions
 
@@ -3165,6 +3443,11 @@ function getNextRespawnTime(killedDate, boss) {
 }
 
 // -------------------------- Discord Manipulation Functions
+
+function deleteMessage(message) {
+    if (message != undefined)
+        message.delete().catch(e => { })
+}
 
 function listAllVariations(commandsList) {
     var listStr = ''
