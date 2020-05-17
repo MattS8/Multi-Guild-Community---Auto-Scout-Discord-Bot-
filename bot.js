@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.4'
+const versionNumber = 'v1.3.5'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -448,6 +448,7 @@ function bossKilledOnAllLayers(boss) {
  * @param {message} message 
  * @param {String} characterName The name of the character people should whisper ingame
  */
+const alertDeleteTimeout = 60 * 1000 * 30
 function notifyBossUp(message, characterName) {
     //const player = characterName == undefined ? getCharacterNameFromDisplayName(message.member.displayName) : characterName
     const boss = Bosses.find(b => b.channelId == message.channel.id)
@@ -472,11 +473,11 @@ function notifyBossUp(message, characterName) {
             }],
             timestamp: message.createdAt
         },
-    })
+    }).then(msg => { setTimeout(deleteMessage, alertDeleteTimeout, msg)})
     const worldBossAlertChannel = bot.channels.find(val => val.id == Config.worldBossAlertChannelId)
     if (worldBossAlertChannel != undefined) {
-        worldBossAlertChannel.send('@everyone')
-        worldBossAlertChannel.send('@everyone')
+        worldBossAlertChannel.send('@everyone').then(msg => { setTimeout(deleteMessage, alertDeleteTimeout, msg)})
+        worldBossAlertChannel.send('@everyone').then(msg => { setTimeout(deleteMessage, alertDeleteTimeout, msg)})
         worldBossAlertChannel.send('@everyone', {
             embed: {
                 title: title,
@@ -488,7 +489,7 @@ function notifyBossUp(message, characterName) {
                 }],
                 timestamp: message.createdAt
             },
-        })
+        }).then(msg => { setTimeout(deleteMessage, alertDeleteTimeout, msg)})
     }
     else
         logger.error('(notifyBossUp) - couldn\'t find world boss channel...');
@@ -1861,24 +1862,32 @@ function resetBossRespawn(boss, suppressNotification, layer) {
 
     const shouldNotify = bossKilledOnAllLayers(boss)
 
-    boss.killedAt[layer-1] = undefined
-    boss.dead[layer-1] = undefined
-    if (boss.respawnTimer[layer-1] != undefined)
-        clearTimeout(boss.respawnTimer[layer-1])
-    boss.respawnTimer[layer-1] = undefined
+    let bossName = boss.name
 
     if (boss.type == "Green Dragon") {
-        GreenDragonsKilled[layer-1] -= 1
-        if (GreenDragonsKilled[layer-1] < 0) {
-            logger.error("(resetBossRespawn) - GreenDragonsKilled on layer " + layer + " was set to a value below 0! (" + GreenDragonsKilled[layer-1] + ")")
-            GreenDragonsKilled = 0 
-        }
+        bossName = "Green Dragons"
+        GreenDragonsKilled[layer-1] = 0
+        if (boss.respawnTimer[layer-1] != undefined)
+            clearTimeout(boss.respawnTimer[layer-1])
+        Bosses.forEach(b => {
+            if (b.type == "Green Dragon") {
+                b.killedAt[layer-1] = undefined
+                b.dead[layer-1] = undefined
+                b.respawnTimer[layer-1] = undefined
+            }
+        })
+    } else {
+        boss.killedAt[layer-1] = undefined
+        boss.dead[layer-1] = undefined
+        if (boss.respawnTimer[layer-1] != undefined)
+            clearTimeout(boss.respawnTimer[layer-1])
+        boss.respawnTimer[layer-1] = undefined
     }
 
     if (!Config.debug.disableBossLogsUpdates)
         updateBossLogs(new Date(Date.now() + 3600000 * Config.utc_offset).format(Config.bossLogs.datePattern), boss.name, "RESPAWN", layer)
 
-    let respawnTitle = boss.name + " can spawn " + (numberOfLayers > 1 ? ("on layer " + layer + "!") : ("!"))
+    let respawnTitle = bossName + " can spawn " + (numberOfLayers > 1 ? ("on layer " + layer + "!") : ("!"))
 
     if (!Config.debug.notifications.disableBossReset && !suppressNotification && shouldNotify){
         showBossStatus(respawnTitle, boss, Config.alertColor)
@@ -1973,6 +1982,7 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
         // Only start respawn cd if all dragons have been killed
         GreenDragonsKilled[layerIndex] += 1
         if (GreenDragonsKilled[layerIndex] == 4) {
+            let respawnTimerTimeoutID = setTimeout(resetBossRespawn, respawnTimerMilis, boss, false, layerIndex+1)
             nextRespawn = getNextRespawnTime(killedDate, boss)
             respawnTimerMilis = nextRespawn.getTime() - Date.now() - Config.respawnGracePeriod
 
@@ -1980,14 +1990,15 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
 
             Bosses.forEach(b => {
                 if (b.type == "Green Dragon") {
-                    b.respawnTimer[layerIndex] = setTimeout(resetBossRespawn, respawnTimerMilis, b, false, layerIndex+1)
+                    b.respawnTimer[layerIndex] = respawnTimerTimeoutID
                     b.nextRespawnDate[layerIndex] = nextRespawn
 
                     logger.info("    (bossKilled) - Updating status for " + b.name + " on layer " + layerIndex)
-                    if (!doSilently)
+                    if (!doSilently) {
                         showBossStatus(":exclamation: All Green Dragons are dead" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")) + " :exclamation:", 
                             b, 
                             getGuildFromDisplayName(message.member.displayName).color)
+                    }
                 }
             })
 
