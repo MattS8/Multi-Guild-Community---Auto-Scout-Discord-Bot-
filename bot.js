@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.6'
+const versionNumber = 'v1.3.7'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -78,9 +78,13 @@ function initializeFromData() {
         })
     }
 
-    // Init respawnWindowDates
+    // Init respawnWindowDates and scouting times
     InitData.bosses.forEach(initBoss => {
         let boss = Bosses.find(b => b.name == initBoss.name)
+        if (boss.type != "Green Dragon") {
+            boss.scoutableTime = initBoss.scoutableTime == undefined ? 0 : initBoss.scoutableTime
+            boss.scoutedTime = initBoss.scoutedTime == undefined ? 0 : initBoss.scoutedTime
+        }
         initBoss.layerInfo.forEach((info, index) => { 
             let respawnDate = getDateFromParam(info.respawnWindowDate == undefined ? "" : info.respawnWindowDate)
             boss.respawnWindowDate[index] = respawnDate == undefined ? new Date() : respawnDate
@@ -88,6 +92,10 @@ function initializeFromData() {
         })
     })
     
+    // Init Green Dragon scouting times
+    GreenDragonScoutableTime = InitData.GreenDragonScoutableTime == undefined ? 0 : InitData.GreenDragonScoutableTime
+    GreenDragonScoutedTime = InitData.GreenDragonScoutedTime == undefined ? 0 : InitData.GreenDragonScoutedTime
+
     // Init Bosses
     InitData.bosses.forEach(initBoss => {
         let boss = Bosses.find(b => b.name == initBoss.name)
@@ -2824,6 +2832,10 @@ function getInitDataObject() {
             logs: boss.logs,
             layerInfo: []
         }
+        if (boss.type != "Green Dragon") {
+            bossData.scoutedTime = boss.scoutedTime
+            bossData.scoutableTime = boss.scoutableTime
+        }
         let scoutLists = currentScoutsLists.get(boss.name)
         for (i=0; i<numberOfLayers; i++) {
             bossData.layerInfo[i] = {
@@ -2847,6 +2859,9 @@ function getInitDataObject() {
 
         initDataObject.bosses[index] = bossData
     })
+
+    initDataObject.GreenDragonScoutableTime = GreenDragonScoutableTime
+    initDataObject.GreenDragonScoutedTime = GreenDragonScoutedTime
 
     return initDataObject
 }
