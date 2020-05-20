@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.5'
+const versionNumber = 'v1.3.6'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -28,7 +28,14 @@ Bosses.forEach(boss => {
     boss.nextRespawnDate = []
     boss.up = []
     boss.layerId = []
+    boss.scoutableTime = 0
+    boss.scoutedTime = 0
+    boss.respawnWindowDate = []
+    
 })
+
+var GreenDragonScoutableTime = 0
+var GreenDragonScoutedTime = 0
 
 var LastAlertMessage = undefined
 
@@ -49,24 +56,47 @@ for (i=0; i< numberOfLayers; i++) {
 
 // Initialization
 function initializeFromData() {
+    logger.info("Initializing from file...")
     // Set Keyword
     if (InitData.keyword != undefined) 
         secretWord = InitData.keyword
 
     // Set Layers
-    if (InitData.numberOfLayers != undefined)
-        setLayerCount(undefined, InitData.numberOfLayers, undefined, [], true)
+    numberOfLayers = InitData.bosses[0].layerInfo.length
+    if (numberOfLayers < 1) {
+        logger.error("Invalid InitData: incomplete layerInfo")
+        numberOfLayers = 1
+    }
 
+    // Initialize layered variables
+    for (i=0; i<numberOfLayers; i++) {
+        if (GreenDragonsKilled[i] == undefined)
+            GreenDragonsKilled[i] = 0
+        currentScoutsLists.forEach(scoutList => {
+            if (scoutList[i] == undefined)
+                scoutList[i] = new Map()
+        })
+    }
+
+    // Init respawnWindowDates
+    InitData.bosses.forEach(initBoss => {
+        let boss = Bosses.find(b => b.name == initBoss.name)
+        initBoss.layerInfo.forEach((info, index) => { 
+            let respawnDate = getDateFromParam(info.respawnWindowDate == undefined ? "" : info.respawnWindowDate)
+            boss.respawnWindowDate[index] = respawnDate == undefined ? new Date() : respawnDate
+            logger.info("    respawnWindowDate: |" + boss.respawnWindowDate[index] + "| (" + index + ")")
+        })
+    })
+    
     // Init Bosses
     InitData.bosses.forEach(initBoss => {
         let boss = Bosses.find(b => b.name == initBoss.name)
-        logger.info("boss " + boss.name)
-
         boss.logs = initBoss.logs
         if (boss.logs == undefined)
             boss.logs = []
 
         let scoutLists = currentScoutsLists.get(boss.name)
+        logger.info("Layer Info for " + initBoss.name + ":")
         initBoss.layerInfo.forEach((info, index) => {
             if (info.layerId != undefined)
                 boss.layerId[index] = info.layerId
@@ -75,7 +105,7 @@ function initializeFromData() {
                 bossKilled(undefined, info.killedDate.split(' '), boss, true, false, false, getScoutListFromChannelId(boss.channelId)[index], index+1)
 
             if (info.scouts != undefined){
-                logger.info("Scout list: " + info.scouts.length)
+                logger.info("    scout list length: " + info.scouts.length)
                 info.scouts.forEach(scout => {
                     logger.info("    (scoutList) - scout " + JSON.stringify(scout))
                     beginShift(undefined, new Date(Date.parse(scout.startTime)), scoutLists, index+1, scout.displayName, scout.id, boss, true)
@@ -175,8 +205,8 @@ function initializeBot(auth) {
     logger.info("Sheets will be automatically reset on: " + nextTuesday.toLocaleString('en-US', Config.dateFormats.killedDateFormat) + " ("
         + (resetDuration / (1000 * 60 * 60)).toFixed(2) + " hours)")
 
-    setTimeout(resetSheets, nextTuesday.getTime() - Date.now())
-    //resetSheets()
+    setTimeout(serverReset, nextTuesday.getTime() - Date.now())
+    setInterval(checkScouting, ScoutCheckInternal)
 }
 
 
@@ -370,7 +400,7 @@ function notifyBossNotScoutable(message, boss, layer) {
 
     message.author.send('<@' + message.author.id + '>\n' + boss.name + ' was killed ' + (numberOfLayers > 1 ? ("on layer " + layer + " at ") : ("at ") ) + boss.killedAt.toLocaleString("en-US", Config.dateFormats.killedDateFormat) 
         + '__. \nNo scouts are needed ' + (numberOfLayers > 1 ? "on this layer until " : "until ")
-        + (getNextRespawnTime(boss.killedAt[layer-1], boss)).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + '**__.\n'
+        + boss.nextRespawnDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + '**__.\n'
         + "**__TIP:__**\n> To start scouting on a different layer, add `layer=<layer number>` to the command.\n> For Example: `" + Config.identifier + Config.commands.normal.beginShift[0] + "layer=2`"
         + '\n-----------------------------------------------------------------------------------------')
 }
@@ -426,21 +456,6 @@ function notifyUserHasInvalidGuildTag(message) {
 }
 
 // -------------------------- Boss Functions
-
-/**
- * This function is used whenever one wants to determine
- * if the boss has been killed on all layers.
- * 
- * @param {Boss} boss 
- */
-function bossKilledOnAllLayers(boss) {
-    let deadOnAllLayers = true
-    for (i=0; i<numberOfLayers; i++)
-        if (boss.dead[i] == undefined)
-            deadOnAllLayers = false
-
-    return deadOnAllLayers
-}
 
 /**
  * This function is used whenever a scout signals that a boss has spawned.
@@ -517,7 +532,7 @@ function notifySummonerInfoSet(message, summonerLocation)
                 inline: true
             }]
         }
-    })
+    }).then(msg => { setTimeout(deleteMessage, 5000, msg) })
 }
 
 /**
@@ -603,6 +618,7 @@ function showBossStatus(title, boss, color) {
         if (boss.dead[i] != undefined) {
             embededMessage += "\n\t\t***---- DEAD ---- ***\n(Killed on: *" + boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "*)"
             if (boss.type == "Green Dragon" && GreenDragonsKilled[i] != 4) {
+                logger.info("DEBUG - number of dragons killed: " + GreenDragonsKilled[i])
                 embededMessage += "\n**(Waiting on other green dragons to be killed.)**"
             } else {
                 embededMessage += "\n(Can respwn after: **" + boss.nextRespawnDate[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "**)"
@@ -652,34 +668,6 @@ function showBossStatus(title, boss, color) {
     }
 }
 
-function addScoutReactions(message, curLayer) {
-    if (curLayer > numberOfLayers)
-        return
-
-        switch(curLayer) {
-            case 1:
-                message.react(numberOfLayers > 1 ? '1️⃣' : '✅').then(() => addScoutReactions(message, curLayer+1))
-                break;
-            case 2:
-                message.react('2️⃣').then(() => addScoutReactions(message, curLayer+1))
-                break;
-            case 3:
-                message.react('3️⃣').then(() => addScoutReactions(message, curLayer+1))
-                break;
-            case 4:
-                message.react('4️⃣').then(() => addScoutReactions(message, curLayer+1))
-                break;
-            case 5:
-                message.react('5️⃣').then(() => addScoutReactions(message, curLayer+1))
-                break;
-            case 6:
-                message.react('6️⃣').then(() => addScoutReactions(message, curLayer+1))
-                break;
-            default:
-                logger.error("(addScoutReactions) - There were too many layers... " + curLayer)
-        }
-} 
-
 /**
  * This function is used when a user requests an up-to-date
  * list of all people currently scouting the boss associated
@@ -697,11 +685,11 @@ function showCurrentScouts(message, boss, showAll) {
     if (showAll) {
         logger.info("    (showCurrentScouts) - updating boss status for all bosses")
         Bosses.forEach(b => {
-            showBossStatus("Current Scout for " + b.name + ":", b, getGuildFromDisplayName(message.member.displayName).color)
+            showBossStatus("Scouting Status for " + b.name + ":", b, getGuildFromDisplayName(message.member.displayName).color)
         })
     } else {
         logger.info("    (showCurrentScouts) - updating boss status for " + boss.name)
-        showBossStatus("Current Scout for " + boss.name + ":", boss, getGuildFromDisplayName(message.member.displayName).color)
+        showBossStatus("Scouting Status for " + boss.name + ":", boss, getGuildFromDisplayName(message.member.displayName).color)
     }
 }
 
@@ -940,6 +928,51 @@ function showMasterCommands(message, showAllCommands) {
         }
     })
 }
+
+// -------------------------- Helper Functions
+
+/**
+ * This function is used whenever one wants to determine
+ * if the boss has been killed on all layers.
+ * 
+ * @param {Boss} boss 
+ */
+function bossKilledOnAllLayers(boss) {
+    let deadOnAllLayers = true
+    for (i=0; i<numberOfLayers; i++)
+        if (boss.dead[i] == undefined)
+            deadOnAllLayers = false
+
+    return deadOnAllLayers
+}
+
+function addScoutReactions(message, curLayer) {
+    if (curLayer > numberOfLayers)
+        return
+
+        switch(curLayer) {
+            case 1:
+                message.react(numberOfLayers > 1 ? '1️⃣' : '✅').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 2:
+                message.react('2️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 3:
+                message.react('3️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 4:
+                message.react('4️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 5:
+                message.react('5️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            case 6:
+                message.react('6️⃣').then(() => addScoutReactions(message, curLayer+1))
+                break;
+            default:
+                logger.error("(addScoutReactions) - There were too many layers... " + curLayer)
+        }
+} 
 
 // --------------------------------------------------------------
 // Google Sheets Functions
@@ -1660,11 +1693,8 @@ function resetSheets() {
     const nextTuesday = getNextTuesday(new Date())
     const resetDuration = nextTuesday.getTime() - Date.now()
 
-    logger.info("    (resetSheets) - Sheets will be reset again on: " + nextTuesday.toLocaleString('en-US', Config.dateFormats.killedDateFormat) + " ("
+    logger.info("    (resetSheets) - Sheets should be reset again on: " + nextTuesday.toLocaleString('en-US', Config.dateFormats.killedDateFormat) + " ("
         + (resetDuration / (1000 * 60 * 60)).toFixed(2) + " hours)")
-
-    // Set next reset timeout
-    setTimeout(resetSheets, nextTuesday.getTime() - Date.now())
 }
 
 // --------------------------------------------------------------
@@ -1864,6 +1894,10 @@ function resetBossRespawn(boss, suppressNotification, layer) {
 
     let bossName = boss.name
 
+    // Record Start Window Date
+
+    boss.respawnWindowDate[layer-1] = new Date()
+
     if (boss.type == "Green Dragon") {
         bossName = "Green Dragons"
         GreenDragonsKilled[layer-1] = 0
@@ -1898,10 +1932,15 @@ function resetBossRespawn(boss, suppressNotification, layer) {
     //     showAllBossStatus(respawnTitle)  
     // }
   
+    if (boss.statusMessage != undefined)
+        addScoutReactions(boss.statusMessage,  1)
+
     if (!Config.debug.disableSignupsUpdates)
         updateCalendarRespawnWindowText(boss, new Date(0))
 
     logMessage("RESPAWN", (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
+
+    saveInitData()
 }
 
  /**
@@ -1912,8 +1951,8 @@ function resetBossRespawn(boss, suppressNotification, layer) {
   * 
   * @param {*} message 
   * @param {String[]} args 
-  * @param {Boolean} doSilently 
   * @param {Boss} boss
+  * @param {Boolean} doSilently 
   * @param {Boolean} updateBossKillsLog 
   * @param {Boolean} forceKillUpdate 
   * @param {Map} scoutingList 
@@ -1932,8 +1971,7 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
                 + "**. If you believe this is in error, please try the command again by adding `" + Config.commands.parameters.force + "` to the *beginning of the command*.\n\nFor example: ` "
                 + Config.identifier + Config.commands.normal.bossKilled[0] + " " + Config.commands.parameters.force + " " + args.join(' ') + "`")
         return logger.info("    (bossKilled) - " + boss.name + " was already registered as killed on layer " + layer + ". (killed at: " + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ")")
-    }
-        
+    } 
 
     // concatenate arguments to form killed time date string
     const killedTimeParam = args.join(' ')
@@ -1946,18 +1984,20 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
 
     // parse any user-entered date
     let killedDate = getDateFromParam(killedTimeParam)
-    logger.info("    (bossKilled) - killedDate: " + killedDate.toLocaleDateString("en-US", Config.dateFormats.killedDateFormat))
 
     // set killedDate to right now if no date was given in command params
-    if (killedDate == undefined && killedTimeParam != '')
-        if (killedTimeParam != '')
-            if (message != undefined)
-                return notifyDiscordBotError(message, 'Invalid date entered. Please try again by either omitting the date or using one of the following formats:'
-                + '\n``MM/DD/YYYY HH:MM AM/PM\nHH:MM AM/PM``')
-            else 
-                return logger.error("(bossKilled) - received invalid date, but message was undefined")
-        else
-            killedDate = new Date()
+    if (killedDate == undefined) {
+        if (killedTimeParam != '') {
+            return message != undefined
+                ? notifyDiscordBotError(message, 'Invalid date entered. Please try again by either omitting the date or using one of the following formats:'
+                    + '\n``MM/DD/YYYY HH:MM AM/PM\nHH:MM AM/PM``')
+                : logger.error("(bossKilled) - received invalid date, but message was undefined")
+        }
+
+        killedDate = new Date()
+    }
+    logger.info("    (bossKilled) - killedDate: " + killedDate.toLocaleDateString("en-US", Config.dateFormats.killedDateFormat))
+
 
     // set dead
     LastKilledBoss = boss
@@ -1981,17 +2021,29 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     if (boss.type == "Green Dragon") {
         // Only start respawn cd if all dragons have been killed
         GreenDragonsKilled[layerIndex] += 1
+        if (GreenDragonsKilled[layerIndex] > 4) {
+            GreenDragonsKilled[layerIndex] = 4
+            logger.error("(bossKilled) - GreenDragonsKilled[" + layerIndex + "] was set to a value greater than 4!")
+        }
         if (GreenDragonsKilled[layerIndex] == 4) {
-            let respawnTimerTimeoutID = setTimeout(resetBossRespawn, respawnTimerMilis, boss, false, layerIndex+1)
+            // Log Scout Window
+            GreenDragonScoutableTime += (killedDate.getTime() - boss.respawnWindowDate[layerIndex].getTime())
+
+            logger.info("GreenDragonScoutableTime: " + GreenDragonScoutableTime)
+
+            let respawnTimerTimeoutID = undefined
             nextRespawn = getNextRespawnTime(killedDate, boss)
-            respawnTimerMilis = nextRespawn.getTime() - Date.now() - Config.respawnGracePeriod
+            if (nextRespawn != undefined) {
+                respawnTimerMilis = nextRespawn.getTime() - Date.now() - Config.respawnGracePeriod
+                respawnTimerTimeoutID = setTimeout(resetBossRespawn, respawnTimerMilis, boss, false, layerIndex+1)
+            }
 
             logger.info("    (bossKilled) - All Green Dragons have been killed on layer " + layer)
 
             Bosses.forEach(b => {
                 if (b.type == "Green Dragon") {
                     b.respawnTimer[layerIndex] = respawnTimerTimeoutID
-                    b.nextRespawnDate[layerIndex] = nextRespawn
+                    b.nextRespawnDate[layerIndex] = nextRespawn == undefined ? getNextTuesday(killedDate) : nextRespawn
 
                     logger.info("    (bossKilled) - Updating status for " + b.name + " on layer " + layerIndex)
                     if (!doSilently) {
@@ -2004,6 +2056,17 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
 
             if (!doSilently)
                 showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
+
+
+            // Remove Sign-Up Reaction If All Green Dragons Are Dead
+            let deadOnAllLayers = true
+            for (i=0; i<numberOfLayers; i++) {
+                if (deadOnAllLayers == true)
+                    deadOnAllLayers = GreenDragonsKilled[i] == 4
+            }
+
+            if (deadOnAllLayers && boss.statusMessage != undefined && boss.statusMessage.reactions != undefined)
+                boss.statusMessage.reactions.forEach((value, key) => { boss.statusMessage.reactions.delete(key) })
         } 
         // Simply notify that a dragon was killed if not told to do silently
         else if (!doSilently) {
@@ -2016,14 +2079,22 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     } 
     // Handle normal boss kill
     else {
-        nextRespawn = getNextRespawnTime(killedDate, boss)
-        respawnTimerMilis = nextRespawn.getTime() - Date.now() - Config.respawnGracePeriod
-        logger.info("    (bossKilled) - can respawn on layer " + (layerIndex+1) + " at: " + (new Date(respawnTimerMilis + Date.now())).toLocaleString("en-US", Config.dateFormats.killedDateFormat)
-            + " ( " + (respawnTimerMilis / (1000 * 60 * 60)).toFixed(2) + " hours ).")
+        // Log Scout Window
+        boss.scoutableTime += (killedDate.getTime() - boss.respawnWindowDate[layerIndex].getTime())
+        logger.info("Scoutable time for " + boss.name + ": " + boss.scoutableTime)
 
-        // subtract 30 minutes to allow people to start scouting just before it comes off respawn
-        boss.respawnTimer[layerIndex] = setTimeout(resetBossRespawn, respawnTimerMilis, boss, doSilently, layerIndex+1)
-        boss.nextRespawnDate[layerIndex] = nextRespawn
+        nextRespawn = getNextRespawnTime(killedDate, boss)
+        if (nextRespawn != undefined) {
+            respawnTimerMilis = nextRespawn.getTime() - Date.now() - Config.respawnGracePeriod
+            boss.respawnTimer[layerIndex] = setTimeout(resetBossRespawn, respawnTimerMilis, boss, doSilently, layerIndex+1)
+            logger.info("    (bossKilled) - can respawn on layer " + (layerIndex+1) + " at: " + (new Date(respawnTimerMilis + Date.now())).toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+                + " ( " + (respawnTimerMilis / (1000 * 60 * 60)).toFixed(2) + " hours ).")
+        } else {
+            boss.respawnTimer[layerIndex] = undefined
+            logger.info("    (bossKilled) - can respawn on layer " + (layerIndex+1) + " after server reset.")
+        }
+
+        boss.nextRespawnDate[layerIndex] = nextRespawn == undefined ? getNextTuesday(killedDate) : nextRespawn
 
         if (!doSilently) {
             showBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")), 
@@ -2033,6 +2104,9 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
             showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
         }
 
+        // Remove Sign-Up Reaction If Dead On All Layers
+        if (boss.statusMessage != undefined  && boss.statusMessage.reactions != undefined && bossKilledOnAllLayers(boss))
+            boss.statusMessage.reactions.forEach((value, key) => { boss.statusMessage.reactions.delete(key) })
     }
 
     if (!Config.debug.disableBossLogsUpdates && updateBossKillsLog)
@@ -2050,60 +2124,6 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
 
     // Write to initData
     saveInitData()
-}
-
-function saveInitData() {
-    fs.writeFile('./InitData.json', JSON.stringify(getInitDataObject(), null, '\t'), (err) => {
-        if (err) return logger.error("(saveInitData) - An error has occured.\n" + err.stack)
-    })
-}
-
-function getInitDataObject() {
-    let initDataObject = {
-        numberOfLayers: numberOfLayers,
-        keyword: secretWord,
-        bosses: []
-    }
-
-    Bosses.forEach((boss, index) => {
-        let bossData = {
-            name: boss.name,
-            logs: boss.logs,
-            layerInfo: []
-        }
-        let scoutLists = currentScoutsLists.get(boss.name)
-        for (i=0; i<numberOfLayers; i++) {
-            bossData.layerInfo[i] = {
-                scouts: []
-            }
-            if (boss.killedAt[i] != undefined)
-                bossData.layerInfo[i].killedDate = boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
-            if (boss.layerId[i] != undefined)
-                bossData.layerInfo[i].layerId = boss.layerId[i]
-            scoutLists[i].forEach(scout => {
-                bossData.layerInfo[i].scouts.push({
-                    id: scout.userId,
-                    displayName: scout.displayName,
-                    startTime: scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
-                })
-            })
-        }
-
-        initDataObject.bosses[index] = bossData
-    })
-
-    return initDataObject
-}
-
-function getLayerOffCooldownSoonest(boss) {
-    let soonestLayer = 0
-
-    for (i=0; i<numberOfLayers; i++) {
-        if (boss.nextRespawnDate[soonestLayer] > boss.nextRespawnDate[i])
-            soonestLayer = i
-    }
-
-    return soonestLayer+1
 }
 
 const errsignUpFormat = ' I didn\'t understand that command. \nThe following shows the proper format for sign up commands. (Note that words wrapped in *`[]`* are optional while words wrapped in *`<>`* are required): \n'
@@ -2443,18 +2463,6 @@ function changeKeyword(message, newKeyword) {
     saveInitData()
 }
 
-function getEmojiForLayer(layer) {
-    switch (layer) {
-        case 1: return '1️⃣'
-        case 2: return '2️⃣'
-        case 3: return '3️⃣'
-        case 4: return '4️⃣'
-        case 5: return '5️⃣'
-        case 6: return '6️⃣'
-        default: return undefined
-    }
-}
-
 /**
  * Sets the current projected number of layers 
  * for the server. 
@@ -2533,6 +2541,18 @@ function setLayerCount(message, amount, boss, layerIds, doSilently) {
     }
 
     saveInitData()
+}
+
+function getEmojiForLayer(layer) {
+    switch (layer) {
+        case 1: return '1️⃣'
+        case 2: return '2️⃣'
+        case 3: return '3️⃣'
+        case 4: return '4️⃣'
+        case 5: return '5️⃣'
+        case 6: return '6️⃣'
+        default: return undefined
+    }
 }
 
 /**
@@ -2669,6 +2689,177 @@ function endAllShifts(message, scoutingList, boss, layer, doSilently) {
     } else {
         logger.info("    (endAllShifts) - Ended all shifts for " + boss.name)
     }
+}
+
+// --------------------------------------------------------------
+// Automated Functions
+// --------------------------------------------------------------
+
+const ScoutCheckInternal = 60 * 1000 
+function checkScouting() {
+    logger.info("checking scouting....")
+    for (i=0; i<numberOfLayers; i++) {
+        let hasCheckedGreenDragons = false
+
+        Bosses.forEach(boss => {
+            logger.info("   checking " + boss.name + "[" + (i+1) + "] (scouts: " + currentScoutsLists.get(boss.name)[i].size + ")")
+            if (boss.type == "Green Dragon") {
+                if (currentScoutsLists.get(boss.name)[i].size > 0 && !hasCheckedGreenDragons) {
+                    hasCheckedGreenDragons = true
+                    GreenDragonScoutedTime += ScoutCheckInternal
+                    logger.info("    Currently scouting Green Dragons")
+                }
+            } else {
+                if (currentScoutsLists.get(boss.name)[i].size > 0) {
+                    boss.scoutedTime += ScoutCheckInternal
+                    logger.info("    Currently scouting " + boss.name)
+                }
+            }
+        })
+    }
+}
+
+function serverReset() {
+    logger.info("------ SERVER RESET ------")
+    const now = new Date()
+    // Complete Scoutable Times For Bosses That Didn't Die
+    let hasCheckedGreenDragons = false
+    Bosses.forEach(boss => {
+        if (boss.type == "Green Dragon") {
+            if (!hasCheckedGreenDragons) {
+                hasCheckedGreenDragons = true
+                for (i=0; i<numberOfLayers; i++) {
+                    if (boss.dead[i] == undefined)
+                        GreenDragonScoutableTime += (now.getTime() - boss.respawnWindowDate[i].getTime())       
+                }
+            }
+        } else {
+            for (i=0; i<numberOfLayers; i++) {
+                if (boss.dead[i] == undefined)
+                    boss.scoutableTime += (now.getTime() - boss.respawnWindowDate[i].getTime())
+            }
+        }
+    })
+
+    // Report Weekly Scouting Info
+    const logChannel = bot.channels.find(c => c.id == Config.scoutLog)
+    
+    let msgFields = []
+    let scoutedTimeHours = undefined
+    let scoutableTimeHours = undefined
+    Bosses.forEach(boss => {
+        // Add Boss Scouting Stats
+        if (boss.type != "Green Dragon") {
+            scoutedTimeHours = (boss.scoutedTime / (60 * 60 * 1000)).toFixed(2)
+            scoutableTimeHours = (boss.scoutableTime / (60 * 60 * 1000)).toFixed(2)
+
+            logger.info("scoutedTime for " + boss.name + ": " + boss.scoutedTime)
+            logger.info("scoutableTime for " + boss.name + ": " + boss.scoutableTime)
+
+            msgFields.push({
+                name: boss.name,
+                value: "" + scoutedTimeHours + " out of " + scoutableTimeHours + " hours scouted. (" + ((boss.scoutedTime / boss.scoutableTime) * 100).toFixed(1) + "%)"
+            })
+        }
+
+        // Clear Logging Variables
+        boss.logMessage = undefined
+        boss.scoutedTime = 0
+        boss.scoutableTime = 0
+    })
+ 
+    scoutedTimeHours = (GreenDragonScoutedTime / (60 * 60 * 1000)).toFixed(2)
+    scoutableTimeHours = (GreenDragonScoutableTime / (60 * 60 * 1000)).toFixed(2)
+    logger.info("scoutedTime for " + boss.name + ": " + boss.scoutedTime)
+    logger.info("scoutableTime for " + boss.name + ": " + boss.scoutableTime)
+
+    msgFields.push({
+        name: "Green Dragons",
+        value: "" + scoutedTimeHours + " out of " + scoutableTimeHours + " hours scouted. (" + ((GreenDragonScoutedTime / GreenDragonScoutableTime) * 100).toFixed(1) + "%)"
+    })
+    GreenDragonScoutableTime = 0
+    GreenDragonScoutedTime = 0
+
+    // Send Weekly Report Message
+    logChannel.send({
+        embed: {
+            title: "Scout Coverage for " + (new Date(Date.now() - (7 * 60 * 60 * 24 * 1000)).toLocaleString("en-US", Config.dateFormats.logDateFormat)) + " - " + now.toLocaleString("en-US", Config.dateFormats.logDateFormat) + ":",
+            color: Config.alertColor,
+            fields: msgFields
+        }
+    }).then(() => {
+        logChannel.send("-------- Weekly Scouting Report (" + (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ") --------").then(() => {
+        // Reset Calendars / Attendance Sheet
+        resetSheets()
+
+        // Clear Past Logs
+        Bosses.forEach(b => { b.logs = [] })
+
+        // Reset All Boss Spawn Windows
+        Bosses.forEach(b => { for (i=0;i<numberOfLayers;i++) resetBossRespawn(b, true, i+1) })
+
+        // Update Discord Channels
+        Bosses.forEach(b => { showBossStatus("Scout Status for " + b.name + ":", b, Config.alertColor) })
+        showAllBossStatus("Server Reset. All Bosses are Scoutable!")
+        })
+    })
+}
+
+function saveInitData() {
+    fs.writeFile('./InitData.json', JSON.stringify(getInitDataObject(), null, '\t'), (err) => {
+        if (err) return logger.error("(saveInitData) - An error has occured.\n" + err.stack)
+    })
+}
+
+function getInitDataObject() {
+    let initDataObject = {
+        numberOfLayers: numberOfLayers,
+        keyword: secretWord,
+        bosses: []
+    }
+
+    Bosses.forEach((boss, index) => {
+        let bossData = {
+            name: boss.name,
+            logs: boss.logs,
+            layerInfo: []
+        }
+        let scoutLists = currentScoutsLists.get(boss.name)
+        for (i=0; i<numberOfLayers; i++) {
+            bossData.layerInfo[i] = {
+                scouts: [],
+                respawnWindowDate: boss.respawnWindowDate[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+            }
+            if (boss.killedAt[i] != undefined)
+                bossData.layerInfo[i].killedDate = boss.killedAt[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+            else  
+                bossData.layerInfo[i].killedDate = undefined
+            if (boss.layerId[i] != undefined)
+                bossData.layerInfo[i].layerId = boss.layerId[i]
+            scoutLists[i].forEach(scout => {
+                bossData.layerInfo[i].scouts.push({
+                    id: scout.userId,
+                    displayName: scout.displayName,
+                    startTime: scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+                })
+            })
+        }
+
+        initDataObject.bosses[index] = bossData
+    })
+
+    return initDataObject
+}
+
+function getLayerOffCooldownSoonest(boss) {
+    let soonestLayer = 0
+
+    for (i=0; i<numberOfLayers; i++) {
+        if (boss.nextRespawnDate[soonestLayer] > boss.nextRespawnDate[i])
+            soonestLayer = i
+    }
+
+    return soonestLayer+1
 }
 
 // --------------------------------------------------------------
@@ -3063,7 +3254,7 @@ bot.on('message', async message => {
                 }
 
                 // Get scout
-                const scout = scoutList[layer-1].get(message.author.id)
+                const scout = scoutList[layer-1].get(userId)
                 if (scout == undefined) {
                     logger.info('    (parseEndShift) - caught user trying to end shift but they never signed up! (' + message.member.displayName + ")")
                     userNotScouting(message)
@@ -3102,6 +3293,10 @@ bot.on('message', async message => {
         // DEBUG COMMANDS
 
         if (Config.debug.enableDebugCommands) {
+
+            if (command == "test_server_reset") {
+                serverReset()
+            }
 
             // if (command == "testgetbossname") {
             //     let bossName = determineBossName(bosses[2], args)
@@ -3446,11 +3641,7 @@ function getNextRespawnTime(killedDate, boss) {
     //logger.info('    (getNextRespawnTime) - \'' + fullRespawnDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + '\' (72 hr offset) ' +
     //    'vs \'' + nextTuesdayDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + '\' (Tuesday Reset)')
 
-
-    const realRespawnDate = fullRespawnDate > nextTuesdayDate ? nextTuesdayDate : fullRespawnDate
-    //logger.info('    (getNextRespawnTime) - next respawn is: \'' + realRespawnDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + '\'')
-
-    return realRespawnDate
+    return fullRespawnDate > nextTuesdayDate ? undefined : fullRespawnDate
 }
 
 // -------------------------- Discord Manipulation Functions
