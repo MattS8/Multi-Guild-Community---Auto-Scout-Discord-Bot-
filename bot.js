@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.7'
+const versionNumber = 'v1.3.8'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -1742,7 +1742,8 @@ function beginShift(message, startDate, scoutList, layer, displayName, userId, b
         return -1
     }
 
-    logMessage("START - " + displayName, startDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
+    let logMsg = startDate.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+    logMessage("START - " + displayName + (numberOfLayers > 1 ? " (layer " + layer + ")" : ""), logMsg, boss)
 
     let title = scoutGuild.sayings != undefined
         ? scoutGuild.sayings[getRandomInt(0, scoutGuild.sayings.length - 1)].replace("%s", displayName).replace("%b", boss.name + (numberOfLayers > 1 ? (" on layer " + layer) :  "."))
@@ -1806,8 +1807,11 @@ function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, o
                 return
         }
     
-        logger.info("    (endShift) - " + scout.displayName + " has ended their shift at " + endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
-        logMessage("STOP - " + scout.displayName, scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
+        logger.info("    (endShift) - " + scout.displayName + " has ended their shift at " 
+            + endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
+        let logMsg = endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + " (" 
+            + ((endTime - scout.startTime) / (1000 * 60 * 60)).toFixed(2) + " hours)"
+        logMessage("STOP - " + scout.displayName + (numberOfLayers > 1 ? " (layer " + layer + ")" : ""), logMsg, boss)
 
         // Attendance Sheet Logic
         if (!Config.debug.disableAttendanceUpdates)
@@ -1946,7 +1950,8 @@ function resetBossRespawn(boss, suppressNotification, layer) {
     if (!Config.debug.disableSignupsUpdates)
         updateCalendarRespawnWindowText(boss, new Date(0))
 
-    logMessage("RESPAWN", (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + (numberOfLayers > 1 ? (" on layer " + layer) : "."), boss)
+    logMessage("RESPAWN" + (numberOfLayers > 1 ? " (layer " + layer + ")" : ""), 
+        (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat), boss)
 
     saveInitData()
 }
@@ -2013,9 +2018,9 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
     boss.up[layerIndex] = undefined
     boss.dead[layerIndex] = true
     logger.info('    (bossKilled) - killed at: ' + boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat))
-    logMessage("KILLED", boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
-            + (numberOfLayers > 1 ? (" on layer " + layer) : "")
-            + (message != undefined ? (" (reported by " + message.member.displayName + ").") : ".") , 
+    logMessage("KILLED" + (numberOfLayers > 1 ? " (layer " + layer + ")" : ""), 
+        boss.killedAt[layerIndex].toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+            + (message != undefined ? (" (reported by " + message.member.displayName + ").") : "."), 
         boss)
 
     // find next respawn time
@@ -2749,12 +2754,10 @@ function serverReset() {
         }
     })
 
-    // Report Weekly Scouting Info
-    const logChannel = bot.channels.find(c => c.id == Config.scoutLog)
-    
-    let msgFields = []
+    // Report Weekly Scouting Info    
     let scoutedTimeHours = undefined
     let scoutableTimeHours = undefined
+    let logChannel = undefined
     Bosses.forEach(boss => {
         // Add Boss Scouting Stats
         if (boss.type != "Green Dragon") {
@@ -2763,11 +2766,23 @@ function serverReset() {
 
             logger.info("scoutedTime for " + boss.name + ": " + boss.scoutedTime)
             logger.info("scoutableTime for " + boss.name + ": " + boss.scoutableTime)
+            logChannel = boss.logChannel
 
-            msgFields.push({
-                name: boss.name,
-                value: "" + scoutedTimeHours + " out of " + scoutableTimeHours + " hours scouted. (" + ((boss.scoutedTime / boss.scoutableTime) * 100).toFixed(1) + "%)"
-            })
+            if (logChannel != undefined) {
+                logChannel.send("-------- Weekly Scouting Report (" 
+                + (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ") --------").then(() => {
+                    logChannel.send({
+                        embed: {
+                            title: "Scout Coverage for " + boss.name,
+                            color: Config.alertColor,
+                            fields: [{
+                                name: "" + scoutedTimeHours + " out of " + scoutableTimeHours + " hours scouted.",
+                                value: "" + ((boss.scoutedTime / boss.scoutableTime) * 100).toFixed(1) + "% coverage."
+                            }]
+                        }
+                    })
+                })
+            }
         }
 
         // Clear Logging Variables
@@ -2780,37 +2795,39 @@ function serverReset() {
     scoutableTimeHours = (GreenDragonScoutableTime / (60 * 60 * 1000)).toFixed(2)
     logger.info("scoutedTime for " + boss.name + ": " + boss.scoutedTime)
     logger.info("scoutableTime for " + boss.name + ": " + boss.scoutableTime)
+    logChannel = bot.channels.find(c => c.id == Config.greenDragonLogChannel)
 
-    msgFields.push({
-        name: "Green Dragons",
-        value: "" + scoutedTimeHours + " out of " + scoutableTimeHours + " hours scouted. (" + ((GreenDragonScoutedTime / GreenDragonScoutableTime) * 100).toFixed(1) + "%)"
-    })
+    if (logChannel != undefined) {
+        logChannel.send("-------- Weekly Scouting Report (" 
+                + (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ") --------").then(() => {
+                    logChannel.send({
+                        embed: {
+                            title: "Scout Coverage for Green Dragons",
+                            color: Config.alertColor,
+                            fields: [{
+                                name: "" + scoutedTimeHours + " out of " + scoutableTimeHours + " hours scouted.",
+                                value: "" + ((GreenDragonScoutedTime / GreenDragonScoutableTime) * 100).toFixed(1) + "% coverage."
+                            }]
+                        }
+                    })
+                })
+    }
     GreenDragonScoutableTime = 0
     GreenDragonScoutedTime = 0
 
-    // Send Weekly Report Message
-    logChannel.send({
-        embed: {
-            title: "Scout Coverage for " + (new Date(Date.now() - (7 * 60 * 60 * 24 * 1000)).toLocaleString("en-US", Config.dateFormats.logDateFormat)) + " - " + now.toLocaleString("en-US", Config.dateFormats.logDateFormat) + ":",
-            color: Config.alertColor,
-            fields: msgFields
-        }
-    }).then(() => {
-        logChannel.send("-------- Weekly Scouting Report (" + (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) + ") --------").then(() => {
-        // Reset Calendars / Attendance Sheet
-        resetSheets()
+    // Reset Calendars / Attendance Sheet
+    resetSheets()
 
-        // Clear Past Logs
-        Bosses.forEach(b => { b.logs = [] })
+    // Clear Past Logs
+    Bosses.forEach(b => { b.logs = [] })
 
-        // Reset All Boss Spawn Windows
-        Bosses.forEach(b => { for (i=0;i<numberOfLayers;i++) resetBossRespawn(b, true, i+1) })
+    // Reset All Boss Spawn Windows
+    Bosses.forEach(b => { for (i=0;i<numberOfLayers;i++) resetBossRespawn(b, true, i+1) })
 
-        // Update Discord Channels
-        Bosses.forEach(b => { showBossStatus("Scout Status for " + b.name + ":", b, Config.alertColor) })
-        showAllBossStatus("Server Reset. All Bosses are Scoutable!")
-        })
-    })
+    // Update Discord Channels
+    Bosses.forEach(b => { showBossStatus("Scout Status for " + b.name + ":", b, Config.alertColor) })
+    showAllBossStatus("Server Reset. All Bosses are Scoutable!")
+            
 }
 
 function saveInitData() {
@@ -3413,38 +3430,30 @@ function parseBossLootCommand(message, command, args) {
 // -------------------------- Logging Functions
 
 function logMessage(msgHeader, msgBody, boss) {
-    const logChannel = bot.channels.find(c => c.id == Config.scoutLog)
+    const logChannel = bot.channels.find(c => c.id == boss.logChannel)
 
-    if (logChannel != undefined && boss != undefined) {
-        boss.logs.push({
-            name: msgHeader,
-            value: msgBody
-        })
+    if (boss == undefined)
+        return logger.error("(logMessage) - boss was undefined!")
 
-        if (boss.logMessage != undefined) {
-            boss.logMessage.edit({
-                embed: {
-                    title: boss.name,
-                    color: Config.alertColor,
-                    fields: boss.logs
-                }
-            })
-        } else {
-            logChannel.send({
-                embed: {
-                    title: boss.name,
-                    color: Config.alertColor,
-                    fields: boss.logs
-                }
-            }).then(newMessage => {boss.logMessage = newMessage })
-        }
-    }
+    if (logChannel == undefined)
+        if (boss.type != "Green Dragon")
+            return logger.error("(logMessage) - No log channel was set for " + boss.name + "!")
+        else
+            logChannel = bot.channels.find(c => c.id == Config.greenDragonLogChannel)
 
-    fs.appendFile('./Events.log', (new Date().toLocaleString("en-US", Config.dateFormats.killedDateFormat)) + ": " + msgHeader + " - " + msgBody + "\n", (err) => {
+
+    boss.logs.push({
+        name: msgHeader,
+        value: msgBody
+    })
+
+    logChannel.send("**" + msgHeader + "**\n``" + msgBody + "``")
+
+    fs.appendFile('./Events.log', (new Date().toLocaleString("en-US", Config.dateFormats.killedDateFormat)) + "(" + boss.name + ")"
+        + ": " + msgHeader + " - " + msgBody + "\n", (err) => {
         if (err) return logger.error("(logMessage) - An error has occured.\n" + err.stack)
     })
 }
-
 
 // -------------------------- Parsing Functions
 
