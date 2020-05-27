@@ -2710,12 +2710,12 @@ function endAllShifts(message, scoutingList, boss, layer, doSilently) {
 
 const ScoutCheckInternal = 60 * 1000 
 function checkScouting() {
-    logger.info("checking scouting....")
+    //logger.info("checking scouting....")
     for (i=0; i<numberOfLayers; i++) {
         let hasCheckedGreenDragons = false
 
         Bosses.forEach(boss => {
-            logger.info("   checking " + boss.name + "[" + (i+1) + "] (scouts: " + currentScoutsLists.get(boss.name)[i].size + ")")
+            //logger.info("   checking " + boss.name + "[" + (i+1) + "] (scouts: " + currentScoutsLists.get(boss.name)[i].size + ")")
             if (boss.type == "Green Dragon") {
                 if (currentScoutsLists.get(boss.name)[i].size > 0 && !hasCheckedGreenDragons) {
                     hasCheckedGreenDragons = true
@@ -2725,7 +2725,7 @@ function checkScouting() {
             } else {
                 if (currentScoutsLists.get(boss.name)[i].size > 0) {
                     boss.scoutedTime += ScoutCheckInternal
-                    logger.info("    Currently scouting " + boss.name)
+                    //logger.info("    Currently scouting " + boss.name)
                 }
             }
         })
