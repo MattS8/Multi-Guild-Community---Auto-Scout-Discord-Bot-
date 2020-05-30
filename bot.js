@@ -3230,6 +3230,10 @@ bot.on('message', async message => {
         // Set Layer Id
         if (Config.commands.normal.setLayerId.map(strToLower).includes(command)) return setLayerId(message, boss, layer, parseInt(args[0]))
 
+
+        // Update world boss alert
+        if (command == "updateworldbossalert") return showAllBossStatus("Status of World Bosses:")
+
         // MASTER COMMANDS
 
         if (Config.admins.includes(message.member.id)) {
