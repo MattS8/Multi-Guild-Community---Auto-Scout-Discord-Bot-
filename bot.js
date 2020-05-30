@@ -585,8 +585,8 @@ function showAllBossStatus(title) {
                     + (boss.type == "Green Dragon" && GreenDragonsKilled[0] != 4 
                         ? ("\n> **(Waiting on other green dragons to be killed.)**\n")
                         : ("\n> (Can respwn after: **" + boss.nextRespawnDate[0].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "**)")))
-                : boss.up[i] != undefined 
-                    ? "***--- ALIVE ---*** (first reported: **" + boss.up[i].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "**)"
+                : boss.up[0] != undefined 
+                    ? "***--- ALIVE ---*** (first reported: **" + boss.up[0].toLocaleString("en-US", Config.dateFormats.killedDateFormat) + "**)"
                     : "*--- Spawnable ---*"
         }
         msgFields.push({
@@ -596,7 +596,7 @@ function showAllBossStatus(title) {
     })
 
     if (LastAlertMessage != undefined) {
-        LastAlertMessage.delete().catch(e => { logger.error("unable to delete world boss arlet message... (" + e + ")") })
+        LastAlertMessage.delete().catch(e => { logger.error("unable to delete world boss alert message... (" + e + ")") })
         LastAlertMessage = undefined
     }
 
@@ -1873,8 +1873,8 @@ function bossSpotted(message, args, command, boss, layer) {
     if (Config.hideCommandMessage)
         message.delete().catch(e => { })
 
-    if (boss.up[layer] == undefined)
-        boss.up[layer] = message.createdAt.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+    if (boss.up[layer-1] == undefined)
+        boss.up[layer-1] = message.createdAt.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
 
     const characterName = args[0]
     if (characterName == undefined) {
@@ -1909,6 +1909,7 @@ function resetBossRespawn(boss, suppressNotification, layer) {
     // Record Start Window Date
 
     boss.respawnWindowDate[layer-1] = new Date()
+    boss.up[layer-1] = undefined
 
     if (boss.type == "Green Dragon") {
         bossName = "Green Dragons"
