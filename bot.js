@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.8'
+const versionNumber = 'v1.3.9'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -1854,7 +1854,6 @@ function removeScoutFromList(boss, layer, scout, scoutList, doSilently, onComple
         onComplete()
 }
 
-
 /**
  * Command: !up
  * 
@@ -1887,6 +1886,16 @@ function bossSpotted(message, args, command, boss, layer) {
     //logger.info('character name = ' + characterName)
     notifyBossUp(message, characterName)
     showAllBossStatus(":exclamation:" + boss.name + (numberOfLayers > 1 ? (" on layer " + layer ) : "" ) + " has spawned!:exclamation:")
+
+    let scoutList = getListOfScoutsForBoss(boss, layer, true)
+    let scoutListString = "\n**Scouts During Boss Spawn**:"
+    scoutList.forEach(s => { scoutListString += ("\n\t - " + s.displayName) })
+
+    logMessage("KILLED" + (numberOfLayers > 1 ? " (layer " + layer + ")" : ""),
+        (new Date()).toLocaleString("en-US", Config.dateFormats.killedDateFormat) 
+        + (message != undefined ? (" (reported by " + message.member.displayName + ").") : ".")
+        + scoutListString,
+        boss)
 }
 
 /**
@@ -3435,11 +3444,10 @@ function parseBossLootCommand(message, command, args) {
 // -------------------------- Logging Functions
 
 function logMessage(msgHeader, msgBody, boss) {
-    const logChannel = bot.channels.find(c => c.id == boss.logChannel)
-
     if (boss == undefined)
         return logger.error("(logMessage) - boss was undefined!")
 
+    let logChannel = bot.channels.find(c => c.id == boss.logChannel)
     if (logChannel == undefined)
         if (boss.type != "Green Dragon")
             return logger.error("(logMessage) - No log channel was set for " + boss.name + "!")
@@ -3813,6 +3821,23 @@ function getRandomInt(min, max) {
 }
 
 // -------------------------- Misc Functions
+
+function getListOfScoutsForBoss(boss, layer, mergeGreenDragons) {
+    let listOfScouts = []
+    if (boss.type == "Green Dragon" && mergeGreenDragons) {
+        // get scout list for all green dragons
+        Bosses.forEach(b => {
+            if (b.type == "Green Dragon") {
+                listOfScouts.push.apply(listOfScouts, getScoutListFromChannelId(b.channelId)[layer-1])
+            }
+        })
+    } else {
+        // get scout list for specific boss
+        listOfScouts = getScoutListFromChannelId(boss.channelId)[layer-1]
+    }
+
+    return listOfScouts
+}
 
 async function sleep(msec) { return new Promise(resolve => setTimeout(resolve, msec)); }
 

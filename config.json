@@ -2,6 +2,7 @@
   "botName": "Multi-Guild Community Scouting",
   "botOwner": "Wing#3787",
   "version": "0.2",
+  "scoutLog": 710927394831204372,
   "admins": [
     "239194797406027777",
     "151201745257627649"
@@ -160,14 +161,14 @@
       "beginShift": [ "start", "begin", "scout" ],
       "endShift": [ "stop", "leave", "end", "finish" ],
       "bossSpotted": [ "up", "spotted", "spawned" ],
-      "showCurrentScouts": [ "update", "here", "scouts", "who", "currentScouts", "current" ],
+      "showCurrentScouts": [ "here", "scouts", "who", "currentScouts", "current" ],
       "listCommands": [ "help", "?", "commands" ],
       "bossKilled": [ "killed", "killedAt", "dead" ],
       "resetBossRespawn": [ "reset" ],
       "setSummonerLocation": ["summonerAt", "setSummoner", "setSummonerLocation", "summoner", "summonerSet", "addSummoner"],
       "removeSummonerLocation": ["removeSummoner", "removeSumm", "noSummoner", "noSumm", "summonerRemove"],
       "signUp": [ "signUp", "schedule" ],
-      "setLayerId": ["setId", "setLayerId", "id"] 
+      "setLayerId": ["setId", "setLayerId", "id"]
     },
     "master": {
       "changeKeyword": ["keyword", "changeKeyword", "newKeyword", "newWord"],
@@ -217,6 +218,10 @@
     "parasedDateFormat": {
       "month": "short",
       "year": "numeric"
+    },
+    "logDateFormat": {
+      "month": "short",
+      "day": "2-digit"
     }
   },
   "helpTexts": {
