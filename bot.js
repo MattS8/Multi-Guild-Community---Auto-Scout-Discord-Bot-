@@ -6,7 +6,7 @@ const Config = require('./Config.json')
 const Guilds = Config.guilds
 const Bosses = Config.bosses
 
-const versionNumber = 'v1.3.9'
+const versionNumber = 'v1.4.2'
 
 // Logger configuration
 logger.remove(logger.transports.Console)
@@ -18,10 +18,10 @@ logger.level = 'debug'
 // Bot initialization 
 const bot = new Discord.Client()
 var newAuth = null
-var secretWord = "dragondudes"   
+var secretWord = "biteme"   
 
 // Layering (eww)
-var numberOfLayers = 2
+var numberOfLayers = 1
 
 // Boss Initialization
 Bosses.forEach(boss => { 
@@ -276,9 +276,8 @@ function resetLootVariables(message) {
  */
 function setGuildLootAttendance(message, guild, amount) {
     logger.info("command: setGuildLootAttendance")
-    let bossName = LastKilledBoss != undefined ? LastKilledBoss.name : "the boss"
     guild.lootAttendance = amount == 0 ? undefined : amount
-    logger.info("    (setGuildLootAttendance) - " + guild.tag + " has " + amount + " people at " + bossName)
+    logger.info("    (setGuildLootAttendance) - " + guild.tag + " has " + amount + " people.")
 
     let guildsList = ""
     let lootRange = 1
@@ -296,7 +295,7 @@ function setGuildLootAttendance(message, guild, amount) {
     // Add participation info to message
     let msgFields = []
     msgFields.push({
-        name: "" + participatingGuilds.length + (participatingGuilds.length == 1 ? " guild" : " guilds") + " participated in " + bossName + " kill:",
+        name: "" + participatingGuilds.length + (participatingGuilds.length == 1 ? " guild" : " guilds") + " participated:",
         value: guildsList,
         inline: false
     })
@@ -333,7 +332,7 @@ function setGuildLootAttendance(message, guild, amount) {
     }
 
     // Send new message
-    const lootTitle = "Loot range for " + bossName + " kill (1 - " + (lootRange - 1) + ")"
+    const lootTitle = "Loot range (1 - " + (lootRange - 1) + ")"
     message.channel.send({
         embed: {
             title: lootTitle,
@@ -609,7 +608,7 @@ function showAllBossStatus(title) {
     }).then(newMessage => { LastAlertMessage = newMessage })
 }
 
-function showBossStatus(title, boss, color) {
+function showBossStatus(title, boss, color, replaceOldMessage = false) {
     const scoutListAllLayers = getScoutListFromChannelId(boss.channelId)
     const channel = bot.channels.find(c => c.id == boss.channelId)
 
@@ -643,20 +642,40 @@ function showBossStatus(title, boss, color) {
     embededMessage += "\n\n For a list a commands type ``" + Config.identifier + Config.commands.normal.listCommands[0] + "``" + " or check the ***Pinned Messages***"
 
     if (boss.statusMessage != undefined) {
-        boss.statusMessage.edit({
-            embed: {
-                title: title,
-                color: color,
-                fields: [{
-                    name: embededTitle,
-                    value: embededMessage,
-                    inline: true
-                }],
-                timestamp: new Date()
-            },
-        }).then(() => {
-            addScoutReactions(boss.statusMessage, 1)
-        })
+        if (replaceOldMessage) {
+            boss.statusMessage.delete().then(() => {
+                channel.send({
+                    embed: {
+                        title: title,
+                        color: color,
+                        fields: [{
+                            name: embededTitle,
+                            value: embededMessage,
+                            inline: true
+                        }],
+                        timestamp: new Date()
+                    },
+                }).then(newMessage => { 
+                    addScoutReactions(newMessage, 1)
+                    boss.statusMessage = newMessage 
+                })
+            })
+        } else {
+            boss.statusMessage.edit({
+                embed: {
+                    title: title,
+                    color: color,
+                    fields: [{
+                        name: embededTitle,
+                        value: embededMessage,
+                        inline: true
+                    }],
+                    timestamp: new Date()
+                },
+            }).then(() => {
+                addScoutReactions(boss.statusMessage, 1)
+            })
+        }
     } else {
         channel.send({
             embed: {
@@ -1804,13 +1823,35 @@ function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, o
                 return notifyDiscordBotError(message, 'Invalid date entered. Please try again by either omitting the date or using one of the following formats:'
                 + '\n``MM/DD/YYYY HH:MM AM/PM\nHH:MM AM/PM``')
             else
-                return
+                return -1
         }
     
+        let totalScoutedHours = ((endTime - scout.startTime) / (1000 * 60 * 60)).toFixed(2)
+
+        // Try and catch bugged scouting sessions that are causing max int scouting times
+        if (totalScoutedHours > 50) {
+            let errorMsg = scout.displayName + ": suspected start time = "
+            try {
+                errorMsg += scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+                errorMsg += ", suspected end time = " + endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+            } catch (e) {
+                errorMsg += 'ERR'
+            }
+            logger.error("(endShift) - Suspicious scout time detected for " + scout.displayName + " (" + totalScoutedHours + " hours)")
+            
+            logMessage("Suspicious scout time detected!", errorMsg, boss)
+
+            removeScoutFromList(boss, layer, scout, scoutList, doSilently, onComplete)
+
+            saveInitData()
+
+            return -1
+        }
+
         logger.info("    (endShift) - " + scout.displayName + " has ended their shift at " 
             + endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat))
         let logMsg = endTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat) + " (" 
-            + ((endTime - scout.startTime) / (1000 * 60 * 60)).toFixed(2) + " hours)"
+            + totalScoutedHours + " hours)"
         logMessage("STOP - " + scout.displayName + (numberOfLayers > 1 ? " (layer " + layer + ")" : ""), logMsg, boss)
 
         // Attendance Sheet Logic
@@ -1833,9 +1874,11 @@ function endShift(message, scout, boss, layer, endTime, scoutList, doSilently, o
         }
         else
             logger.info('    (endShift) - DEBUG: ignoring schdule sheet')
+
+        saveInitData()
     })
 
-    saveInitData()
+    
 }
 
 function removeScoutFromList(boss, layer, scout, scoutList, doSilently, onComplete) {
@@ -2072,7 +2115,8 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
                     if (!doSilently) {
                         showBossStatus(":exclamation: All Green Dragons are dead" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")) + " :exclamation:", 
                             b, 
-                            getGuildFromDisplayName(message.member.displayName).color)
+                            getGuildFromDisplayName(message.member.displayName).color,
+                            true)
                     }
                 }
             })
@@ -2095,7 +2139,8 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
         else if (!doSilently) {
             showBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")),
                 boss,
-                getGuildFromDisplayName(message.member.displayName).color
+                getGuildFromDisplayName(message.member.displayName).color,
+                true
             )
             showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
         }  
@@ -2122,7 +2167,8 @@ function bossKilled(message, args, boss, doSilently, updateBossKillsLog, forceKi
         if (!doSilently) {
             showBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")), 
                 boss, 
-                getGuildFromDisplayName(message.member.displayName).color)
+                getGuildFromDisplayName(message.member.displayName).color,
+                true)
 
             showAllBossStatus(boss.name + " was killed" + (numberOfLayers > 1 ? (" on layer " + layer + "!") : ("!")))
         }
@@ -2730,7 +2776,7 @@ function checkScouting() {
                 if (currentScoutsLists.get(boss.name)[i].size > 0 && !hasCheckedGreenDragons) {
                     hasCheckedGreenDragons = true
                     GreenDragonScoutedTime += ScoutCheckInternal
-                    logger.info("    Currently scouting Green Dragons")
+                    //logger.info("    Currently scouting Green Dragons")
                 }
             } else {
                 if (currentScoutsLists.get(boss.name)[i].size > 0) {
@@ -2776,7 +2822,7 @@ function serverReset() {
 
             logger.info("scoutedTime for " + boss.name + ": " + boss.scoutedTime)
             logger.info("scoutableTime for " + boss.name + ": " + boss.scoutableTime)
-            logChannel = boss.logChannel
+            logChannel = bot.channels.find(c => c.id == boss.logChannel)
 
             if (logChannel != undefined) {
                 logChannel.send("-------- Weekly Scouting Report (" 
@@ -2879,7 +2925,7 @@ function getInitDataObject() {
                 bossData.layerInfo[i].scouts.push({
                     id: scout.userId,
                     displayName: scout.displayName,
-                    startTime: scout.startTime.toLocaleString("en-US", Config.dateFormats.killedDateFormat)
+                    startTime: scout.startTime.toLocaleString("en-US")
                 })
             })
         }
@@ -3009,7 +3055,7 @@ bot.on('messageReactionRemove', async (reaction, user) => {
 })
 
 bot.on('messageReactionAdd', async (reaction, user) => {
-    if (user.bot) return
+    if (user == undefined || user.bot || user.id == undefined || user.id == null) return
 
     if (reaction.partial) {
 		try {
@@ -3101,6 +3147,10 @@ bot.on('message', async message => {
 
     // Ignore messages not in proper channels
     logger.info("Received message on channel " + message.channel.name + " (" + message.channel.id + ") from user " + message.author.username + " (" + message.member.id + ")")
+    
+    if (message.channel.id == Config.worldBossAlertChannelId) {
+        return notifyDiscordBotError(message, "The alert channel is meant for notifications only. Please use commands in one of the ***scouting*** channels.")
+    }
     const boss = Bosses.find(b => b.channelId == message.channel.id)
     if (boss == undefined
         && message.channel.id != Config.bossLogs.channelId
